@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>particles</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				color: #ffffff;
+				background-color: #000000;
+				margin: 0px;
+				overflow: hidden;
+			}
+		</style>
+	</head>
+
+	<body>
+		<div id="container"></div>
+		<script src="../build/three.js"></script>
+		<script src="js/Detector.js"></script>
+		<script src="js/controls/OrbitControls.js"></script>
+		<script src="js/libs/stats.min.js"></script>
+
+		<script type="x-shader/x-vertex" id="vertexshader">
+			attribute float size;
+			attribute vec3 customColor;
+			varying vec3 vColor;
+			void main() {
+				vColor = customColor;
+				vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+				gl_PointSize = size * ( 300.0 / -mvPosition.z );
+				gl_Position = projectionMatrix * mvPosition;
+			}
+		</script>
+
+		<script type="x-shader/x-fragment" id="fragmentshader">
+			uniform vec3 color;
+			uniform sampler2D texture;
+			varying vec3 vColor;
+			void main() {
+				gl_FragColor = vec4( color * vColor, 1.0 );
+				gl_FragColor = gl_FragColor * texture2D( texture, gl_PointCoord );
+			}
+		</script>
+
+		<script>
+		//biary shift
+		var N = 1 << 0,
+				S = 1 << 1,
+				W = 1 << 2,
+				E = 1 << 3,
+				F = 1 << 4,
+				B = 1 << 5;
+		var sqr = 20;
+		var width = sqr, height = sqr, depth = sqr,
+				cells = generateMaze(width, height, depth),
+				frontier = [width * height * depth - 1];
+
+		var n0, fill = true, distance = 0, distances=new Array(width * height * depth), visited = new Array(width * height * depth);
+
+		if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+		var renderer, scene, camera, stats;
+		var particleSystem, uniforms, geometry;
+		var particles = width * height * depth;
+		var WIDTH = window.innerWidth;
+		var HEIGHT = window.innerHeight;
+		var radius = 200;
+		geometry = new THREE.BufferGeometry();
+		var positions = new Float32Array( particles * 3 );
+		var colors = new Float32Array( particles * 3 );
+		var sizes = new Float32Array( particles );
+		var color = new THREE.Color();
+		var sideLen = sqr;
+		var total=0;
+		init();
+		animate();
+		function init() {
+
+
+			while(fill){
+				if (!(n0 = frontier.length)) fill=false;
+
+				distance = distance+1 % 360;
+			    for (var i = 0; i < n0; ++i) {
+			      //fillCell(frontier[i], distance % 360);
+
+						color.setHSL( distance/360, 1.0, 0.5 );
+
+						colors[frontier[i]*3] = color.r;
+						colors[frontier[i]*3 + 1] = color.g;
+						colors[frontier[i]*3 + 2] = color.b;
+						//frontier[i] % sidelen = range(0,19). divide by sidelen gives between 0-1. Times radius to spread out.
+						positions[frontier[i]*3 + 0 ] = ((frontier[i]  % sideLen | 0) / sideLen * 2 - 1) * radius /3;
+						//frontier[i] / sideLen | 0) / sideLen= range(0,20).
+						positions[frontier[i]*3 + 1 ] = (((frontier[i] / sideLen | 0) / sideLen % 1) * 2 - 1) * radius/3;
+						//Math.pow(particles* particles,1/3) = 400. Divide the pos by a face(20x20) to get z axis. divide by sidelen to get range(0-1)
+						positions[frontier[i]*3 + 2 ] = ((frontier[i] / Math.pow(particles* particles,1/3) | 0) / sideLen * 2 - 1) * radius/3;
+						sizes[frontier[i]] = 10;
+						distances[frontier[i]] = distance;
+			    }
+
+			    var frontier1 = [],
+			        i0,
+			        i1;
+
+			    for (var i = 0; i < n0; ++i) {
+			      i0 = frontier[i];
+			      if (cells[i0] & E && !visited[i1 = i0 + 1]) visited[i1] = true, frontier1.push(i1);
+			      if (cells[i0] & W && !visited[i1 = i0 - 1]) visited[i1] = true, frontier1.push(i1);
+			      if (cells[i0] & S && !visited[i1 = i0 + width]) visited[i1] = true, frontier1.push(i1);
+			      if (cells[i0] & N && !visited[i1 = i0 - width]) visited[i1] = true, frontier1.push(i1);
+						if (cells[i0] & F && !visited[i1 = i0 + (width * height)]) visited[i1] = true, frontier1.push(i1);
+						if (cells[i0] & B && !visited[i1 = i0 - (width * height)]) visited[i1] = true, frontier1.push(i1);
+			    }
+			    frontier = frontier1;
+			  }
+			camera = new THREE.PerspectiveCamera( 40, WIDTH / HEIGHT, 1, 10000 );
+			camera.position.z = 200;
+			scene = new THREE.Scene();
+			uniforms = {
+				color:     { value: new THREE.Color( 0xffffff ) },
+				texture:   { value: new THREE.TextureLoader().load( "textures/sprites/spark1.png" ) }
+			};
+			var shaderMaterial = new THREE.ShaderMaterial( {
+				uniforms:       uniforms,
+				vertexShader:   document.getElementById( 'vertexshader' ).textContent,
+				fragmentShader: document.getElementById( 'fragmentshader' ).textContent,
+				blending:       THREE.AdditiveBlending,
+				depthTest:      false,
+				transparent:    true
+			});
+
+
+			geometry.addAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
+			geometry.addAttribute( 'customColor', new THREE.BufferAttribute( colors, 3 ) );
+			geometry.addAttribute( 'size', new THREE.BufferAttribute( sizes, 1 ) );
+			particleSystem = new THREE.Points( geometry, shaderMaterial );
+			scene.add( particleSystem );
+			renderer = new THREE.WebGLRenderer();
+			renderer.setPixelRatio( window.devicePixelRatio );
+			renderer.setSize( WIDTH, HEIGHT );
+			var container = document.getElementById( 'container' );
+			container.appendChild( renderer.domElement );
+			var controls = new THREE.OrbitControls(camera, renderer.domElement);
+			stats = new Stats();
+			container.appendChild( stats.dom );
+
+			window.addEventListener( 'resize', onWindowResize, false );
+		}
+
+		function onWindowResize() {
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+			renderer.setSize( window.innerWidth, window.innerHeight );
+		}
+
+		function animate() {
+			requestAnimationFrame( animate );
+			render();
+			stats.update();
+		}
+
+		function render() {
+			var time = Date.now() * 0.005;
+			particleSystem.rotation.z = 0.01 * time;
+			particleSystem.rotation.y = 0.03 * time;
+			particleSystem.rotation.x = 0.05 * time;
+			var sizes = geometry.attributes.size.array;
+			var colors = geometry.attributes.customColor.array;
+			var one = 0;
+			var distance = 0;
+			var frontier = [width * height * depth - 1];
+			var frontier2= [];
+			/*
+			while(one<100){
+				one++;
+
+				distance = distance+1 % 360;
+
+			    var frontier1 = [],
+			        i0,
+			        i1;
+
+			    for (var i = 0; i < n0; ++i) {
+			      i0 = frontier[i];
+			      if (cells[i0] & E && !visited[i1 = i0 + 1]) visited[i1] = true, frontier1.push(i1);
+			      if (cells[i0] & W && !visited[i1 = i0 - 1]) visited[i1] = true, frontier1.push(i1);
+			      if (cells[i0] & S && !visited[i1 = i0 + width]) visited[i1] = true, frontier1.push(i1);
+			      if (cells[i0] & N && !visited[i1 = i0 - width]) visited[i1] = true, frontier1.push(i1);
+						if (cells[i0] & F && !visited[i1 = i0 + (width * height)]) visited[i1] = true, frontier1.push(i1);
+						if (cells[i0] & B && !visited[i1 = i0 - (width * height)]) visited[i1] = true, frontier1.push(i1);
+			    }
+			    frontier = frontier1;
+					for(var x = 0; x<frontier1.length; x++){
+						frontier2.push(frontier1[x]);
+					}
+					for(var y =0; y<frontier2.length; y++){
+						colors[frontier2[y]*3] += 0.01;
+					}
+			  }
+				*/
+			for ( var i = 0; i < particles; i++ ) {
+				distances[i] += .5 % 360;
+				color.setHSL( distances[i]/360, 1.0, 0.5 );
+
+				colors[i*3] = color.r;
+				colors[i*3 + 1] = color.g;
+				colors[i*3 + 2] = color.b;
+				//sizes[ i ] = 10 * ( 1 + Math.sin( 0.1 * i + time ) );
+				//colors[i*3]= (colors[i*3]+.01) % 1;
+				//colors[i*3 + 1]= (colors[i*3 + 1]+.001) % 1;
+				//colors[i*3 + 2]= (colors[i*3 + 2]+.001) % 1;
+			}
+			geometry.attributes.size.needsUpdate = true;
+			geometry.attributes.customColor.needsUpdate = true;
+			renderer.render( scene, camera );
+		}
+
+		function generateMaze(width, height, depth) {
+		  var cells = new Array(width * height * depth), // each cell’s edge bits
+		      remaining = new Array(width * height * depth), // cell indexes to visit
+		      previous = new Array(width * height * depth); // current random walk
+			for(var x = 0; x<remaining.length; x++){
+				remaining[x] = x;
+			}
+
+		  // Add the starting cell.
+		  var start = remaining.pop();
+		  cells[start] = 0;
+
+		  // While there are remaining cells,
+		  // add a loop-erased random walk to the maze.
+		  while (!loopErasedRandomWalk());
+
+		  return cells;
+
+		  function loopErasedRandomWalk() {
+		    var i0, i1, x0, y0, z0;
+
+		    // Pick a location that’s not yet in the maze (if any).
+		    do {
+		      if ((i0 = remaining.pop()) == null) return true;
+		    }
+		    while (cells[i0] >= 0);
+		    // Perform a random walk starting at this location,
+		    previous[i0] = i0;
+		    while (true) {
+		      x0 = i0 % width;
+		      y0 = (i0 / width | 0) % height;
+					z0 = i0 / (width * height) | 0;
+
+		      // picking a legal random direction at each step.
+		      i1 = Math.random() * 6 | 0;
+		      if (i1 === 0) { if (y0 <= 0) continue; --y0, i1 = i0 - width; }
+		      else if (i1 === 1) { if (y0 >= height - 1) continue; ++y0, i1 = i0 + width; }
+		      else if (i1 === 2) { if (x0 <= 0) continue; --x0, i1 = i0 - 1; }
+		      else if (i1 === 3) { if (x0 >= width - 1)  continue; ++x0, i1 = i0 + 1; }
+					else if (i1 === 4) { if (z0 <= 0) continue; --z0, i1 = i0 - (width * height); }
+					else               { if (z0 >= depth - 1)  continue; ++z0, i1 = i0 + (width * height); }
+
+		      // If this new cell was visited previously during this walk,
+		      // erase the loop, rewinding the path to its earlier state.
+		      if (previous[i1] >= 0) eraseWalk(i0, i1);
+
+		      // Otherwise, just add it to the walk.
+		      else previous[i1] = i0;
+
+		      // If this cell is part of the maze, we’re done walking.
+		      if (cells[i1] >= 0) {
+
+		        // Add the random walk to the maze by backtracking to the starting cell.
+		        // Also erase this walk’s history to not interfere with subsequent walks.
+
+		        while ((i0 = previous[i1]) !== i1) {
+		          if      (i1 === i0 + 1) cells[i0] |= E, cells[i1] |= W;
+		          else if (i1 === i0 - 1) cells[i0] |= W, cells[i1] |= E;
+		          else if (i1 === i0 + width)  cells[i0] |= S, cells[i1] |= N;
+		          else if (i1 === i0 - width)  cells[i0] |= N, cells[i1] |= S;
+							else if (i1 === i0 + (width * height)) cells[i0] |= F, cells[i1] |= B;
+							else if (i1 === i0 - (width * height)) cells[i0] |= B, cells[i1] |= F;
+		          previous[i1] = NaN;
+		          i1 = i0;
+		        }
+
+		        previous[i1] = NaN;
+		        return;
+		      }
+
+		      i0 = i1;
+		    }
+		  }
+
+		  function eraseWalk(i0, i2) {
+		    var i1;
+		    do i1 = previous[i0], previous[i0] = NaN, i0 = i1; while (i1 !== i2);
+		  }
+		}
+	</script>
+
+</body>
+</html>
