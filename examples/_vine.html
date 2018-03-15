@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>Vine</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0,
+	 maximum-scale=1.0">
+	<style>
+	body {
+		color: #cccccc;
+		font-family:Monospace;
+		font-size:13px;
+		text-align:center;
+		background-color: #050505;
+		margin: 0px;
+		overflow: hidden;
+	}
+	#info {
+		position: absolute;
+		top: 0px; width: 100%;
+		padding: 5px;
+	}
+	</style>
+</head>
+<body>
+	<div id="info">Left click: rotate. Right click: translate. Scroll: zoom.</div>
+	<script src="../build/three.js"></script>
+	<script src="js/controls/OrbitControls.js"></script>
+	<script>
+
+'use strict';
+
+function generateMaze(width, height, depth) {
+  var cells = new Array(width * height * depth), // each cell’s edge bits
+      remaining = new Array(width * height * depth), // cell indexes to visit
+      previous = new Array(width * height * depth); // current random walk
+	for(var x = 0; x<remaining.length; x++){
+		remaining[x] = x;
+	}
+
+  // Add the starting cell.
+  var start = remaining.pop();
+  cells[start] = 0;
+
+  // While there are remaining cells,
+  // add a loop-erased random walk to the maze.
+  while (!loopErasedRandomWalk());
+
+  return cells;
+
+  function loopErasedRandomWalk() {
+    var i0, i1, x0, y0, z0;
+
+    // Pick a location that’s not yet in the maze (if any).
+    do {
+      if ((i0 = remaining.pop()) == null) return true;
+    }
+    while (cells[i0] >= 0);
+    // Perform a random walk starting at this location,
+    previous[i0] = i0;
+    while (true) {
+			x0 = i0 % width;
+      y0 = (i0 / width | 0) % height;
+			z0 = i0 / (width * height) | 0;
+
+      // picking a legal random direction at each step.
+      i1 = Math.random() * 6 | 0;
+      if (i1 === 0) { if (y0 <= 0) continue; --y0, i1 = i0 - width; }
+      else if (i1 === 1) { if (y0 >= height - 1) continue; ++y0, i1 = i0 + width; }
+      else if (i1 === 2) { if (x0 <= 0) continue; --x0, i1 = i0 - 1; }
+      else if (i1 === 3) { if (x0 >= width - 1)  continue; ++x0, i1 = i0 + 1; }
+			else if (i1 === 4) { if (z0 <= 0) continue; --z0, i1 = i0 - (width * height); }
+			else               { if (z0 >= depth - 1)  continue; ++z0, i1 = i0 + (width * height); }
+
+      // If this new cell was visited previously during this walk,
+      // erase the loop, rewinding the path to its earlier state.
+      if (previous[i1] >= 0) eraseWalk(i0, i1);
+
+      // Otherwise, just add it to the walk.
+      else previous[i1] = i0;
+
+      // If this cell is part of the maze, we’re done walking.
+      if (cells[i1] >= 0) {
+
+        // Add the random walk to the maze by backtracking to the starting cell.
+        // Also erase this walk’s history to not interfere with subsequent walks.
+
+        while ((i0 = previous[i1]) !== i1) {
+          if      (i1 === i0 + 1) cells[i0] |= E, cells[i1] |= W;
+          else if (i1 === i0 - 1) cells[i0] |= W, cells[i1] |= E;
+          else if (i1 === i0 + width)  cells[i0] |= S, cells[i1] |= N;
+          else if (i1 === i0 - width)  cells[i0] |= N, cells[i1] |= S;
+					else if (i1 === i0 + (width * height)) cells[i0] |= F, cells[i1] |= B;
+					else if (i1 === i0 - (width * height)) cells[i0] |= B, cells[i1] |= F;
+          previous[i1] = NaN;
+          i1 = i0;
+        }
+
+        previous[i1] = NaN;
+        return;
+      }
+
+      i0 = i1;
+    }
+  }
+
+  function eraseWalk(i0, i2) {
+    var i1;
+    do i1 = previous[i0], previous[i0] = NaN, i0 = i1; while (i1 !== i2);
+  }
+}
+
+//biary shift
+var N = 1 << 0,
+		S = 1 << 1,
+		W = 1 << 2,
+		E = 1 << 3,
+		F = 1 << 4,
+		B = 1 << 5;
+
+var width = 20, height = 20, depth = 20,
+		cells = generateMaze(width, height, depth),
+		frontier = [width * height * depth -1];
+
+var n0, fill = true, distance = 0, visited = new Array(width * height * depth),
+		cellSize = 2, cellSpacing = 0, total = 0;
+		visited[frontier[0]] = true;
+
+function render() {
+	total++;
+	if(total>1000){
+		console.log("render stop");
+		continueAnim=false;
+		fill=false;
+	}
+	if(fill){
+		if (!(n0 = frontier.length)) {console.log(total, width * height * depth), fill=false};
+	  //hue, saturation, lightness
+	  //context.fillStyle = d3.hsl(distance++ % 360, 1, .5) + "";
+	  //if (distance) {
+		distance = distance+1 % 360;
+		//console.log(distance);
+	    for (var i = 0; i < n0; ++i) {
+	      fillCell(frontier[i], distance % 360);
+	    }
+	    var frontier1 = [],
+	        i0,
+	        i1;
+
+	    for (var i = 0; i < n0; ++i) {
+	      i0 = frontier[i];
+	      if (cells[i0] & E && !visited[i1 = i0 + 1]) visited[i1] = true, frontier1.push(i1);
+	      if (cells[i0] & W && !visited[i1 = i0 - 1]) visited[i1] = true, frontier1.push(i1);
+	      if (cells[i0] & S && !visited[i1 = i0 + width]) visited[i1] = true, frontier1.push(i1);
+	      if (cells[i0] & N && !visited[i1 = i0 - width]) visited[i1] = true, frontier1.push(i1);
+				if (cells[i0] & F && !visited[i1 = i0 + (width * height)]) visited[i1] = true, frontier1.push(i1);
+				if (cells[i0] & B && !visited[i1 = i0 - (width * height)]) visited[i1] = true, frontier1.push(i1);
+	    }
+	    frontier = frontier1;
+	  }
+		renderer.render(scene, camera);
+	}
+
+	var scene, camera, renderer, controls;
+	var worldpos = new THREE.Vector3();
+	var Wwidth = window.innerWidth, Wheight = window.innerHeight;
+	var animframe;
+	var continueAnim = true;
+	var boxGeo = new THREE.CubeGeometry(cellSize,cellSize,cellSize);
+	var boxGeoWave = new THREE.SphereGeometry(1, 8, 8);
+
+	function fillCell(loc, hue) {
+		let sqr = new THREE.Group();
+		let x = loc % width;
+		let y = (loc / width | 0) % height;
+		let z = (loc / (width * height) | 0);
+		let set = new Array(x*3,y*3,z*3);
+		scene.add(sqr);
+		var boxMat = new THREE.MeshPhongMaterial({
+			color: new THREE.Color(),
+			shading: THREE.FlatShading,
+			transparent: true,
+			opacity: 1
+		});
+		boxMat.color.setHSL(hue/360, 1, 0.5);
+		const obj = new THREE.Mesh(boxGeoWave, boxMat);
+		obj.castShadow = true;
+		obj.receiveShadow = true;
+		obj.position.set(set[0],set[1],set[2]);
+		//obj.rotateY(rot);
+		sqr.add(obj);
+		return obj;
+	}
+
+	function init() {
+		scene = new THREE.Scene();
+		camera = new THREE.PerspectiveCamera(50, Wwidth / Wheight, 0.3, 1000);
+		//scene.position.y-=20;
+		//finally figured out the reason worldpos was 20 off.
+		camera.position.z = 150;
+		camera.position.y = 100;
+		camera.position.x = 100;
+		camera.lookAt(scene.position);
+
+		renderer = new THREE.WebGLRenderer();
+		renderer.setPixelRatio(window.devicePixelRatio);
+		renderer.setSize(Wwidth, Wheight);
+		renderer.setClearColor(0x0E2255);
+		renderer.shadowMap.enabled = true;
+
+		controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+		const ambientLight = new THREE.AmbientLight();
+		scene.add(ambientLight);
+
+		const light = new THREE.DirectionalLight();
+		light.position.set(200, 100, 200);
+		light.castShadow = true;
+		light.shadow.camera.left = -100;
+		light.shadow.camera.right = 100;
+		light.shadow.camera.top = 100;
+		light.shadow.camera.bottom = -100;
+		scene.add(light);
+
+		document.body.appendChild(renderer.domElement);
+
+		window.addEventListener('resize', onResize);
+	}
+
+	function onResize() {
+		Wwidth = window.innerWidth;
+		Wheight = window.innerHeight;
+		camera.aspect = Wwidth / Wheight;
+		camera.updateProjectionMatrix();
+		renderer.setSize(Wwidth, Wheight);
+	}
+
+	function animate() {
+		animframe = requestAnimationFrame(animate);
+		render();
+		if(!continueAnim){
+			cancelAnimationFrame(animframe);
+		}
+	}
+
+	init();
+	animate();
+
+	</script>
+</body>
+</html>

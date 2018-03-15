@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>Sortin</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0,
+	maximum-scale=1.0">
+	<style>
+	body {
+		color: #cccccc;
+		font-family:Monospace;
+		font-size:13px;
+		text-align:center;
+		background-color: #050505;
+		margin: 0px;
+		overflow: hidden;
+	}
+	#info {
+		position: absolute;
+		top: 0px; width: 100%;
+		padding: 5px;
+	}
+	</style>
+</head>
+<body>
+	<div id="info">Sort</div>
+	<script src="js/libs/dat.gui.min.js"></script>
+	<script src="../build/three.js"></script>
+	<script src="js/controls/OrbitControls.js"></script>
+	<script src="js/libs/stats.min.js"></script>
+	<script>
+
+	'use strict';
+
+	var effectController = {
+		reset: false,
+		particleCount: 128
+	};
+
+	var scene, camera, renderer, controls, group, container, stats;
+	var worldpos = new THREE.Vector3();
+	var Wwidth = window.innerWidth, Wheight = window.innerHeight;
+	var animframe;
+
+	function init() {
+		container = document.createElement( 'div' );
+		document.body.appendChild( container );
+		scene = new THREE.Scene();
+		camera = new THREE.PerspectiveCamera(50, Wwidth / Wheight, 0.3, 1000);
+		//scene.position.y-=20;
+		//finally figured out the reason worldpos was 20 off.
+		camera.position.z = 25;
+		camera.position.y = 0;
+		camera.position.x = 0;
+		camera.lookAt(scene.position);
+
+		renderer = new THREE.WebGLRenderer();
+		renderer.setPixelRatio(window.devicePixelRatio);
+		renderer.setSize(Wwidth, Wheight);
+		renderer.setClearColor(0x0E2255);
+		renderer.shadowMap.enabled = true;
+		container.appendChild(renderer.domElement);
+		stats = new Stats();
+		container.appendChild(stats.dom);
+
+		//click to move screen, zoom in and out
+		controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+		const ambientLight = new THREE.AmbientLight();
+		scene.add(ambientLight);
+
+		const light = new THREE.DirectionalLight();
+		light.position.set(200, 100, 200);
+		light.castShadow = true;
+		light.shadow.camera.left = -100;
+		light.shadow.camera.right = 100;
+		light.shadow.camera.top = 100;
+		light.shadow.camera.bottom = -100;
+		scene.add(light);
+
+		group = new THREE.Group();
+		scene.add( group );
+		initCircle(128);
+		initGUI();
+		document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+		document.addEventListener( 'mousedown', onDocumentMouseDown, false );
+
+		document.body.appendChild(renderer.domElement);
+		window.addEventListener('resize', onResize);
+		console.log(scene);
+	}
+
+	function initCircle(count){
+		for(var x = 0; x<count; x++){
+			drawElem(Math.sin(x / count * 2 * Math.PI) * 10, Math.cos(x / count * 2 * Math.PI) * 10, 0, x * 360 / count);
+		}
+	}
+
+	function initGUI() {
+		var gui = new dat.GUI();
+		gui.add( effectController, "reset" ).onChange( function( value ) { return; } );
+		gui.add( effectController, "particleCount", 0, 128, 1 ).onChange( function( value ) {
+			scene.remove(group);
+			group = new THREE.Group();
+			scene.add( group );
+			initCircle(value);
+		});
+	}
+
+	var sphere_size = new THREE.SphereGeometry(.25, 16, 16);
+
+	function drawElem(x,y,z, hue) {
+		var mat = new THREE.MeshPhongMaterial({
+			color: new THREE.Color(),
+			flatShading: THREE.FlatShading,
+			transparent: true,
+			opacity: 1
+		});
+		mat.color.setHSL(hue/360, 1, 0.5);
+		const obj = new THREE.Mesh(sphere_size, mat);
+		obj.castShadow = true;
+		obj.receiveShadow = true;
+		obj.position.set(x,y,z);
+		//obj.rotateY(rot);
+		//scene.children[2].add(obj);
+		group.add(obj);
+		return obj;
+	}
+
+	var mouse = new THREE.Vector2();
+	var raycaster = new THREE.Raycaster();
+	var intersected, hovered_hsl;
+
+	function onDocumentMouseMove( event ) {
+		event.preventDefault();
+		mouse.set( ( event.clientX / window.innerWidth ) * 2 - 1, - ( event.clientY / window.innerHeight ) * 2 + 1 );
+		raycaster.setFromCamera( mouse, camera );
+		//scene.children[2].children = spheres
+		//highlights spheres white while mouse is over them ( change to emissive )
+		var intersects = raycaster.intersectObjects( scene.children[2].children );
+		//if mouse intersects a sphere
+		if ( intersects.length > 0 ) {
+			//if mouse is still over same object skip
+			if ( intersected != intersects[0].object){
+				//if mouse was on an obj and moves to another without becoming null
+				if(intersected){
+					intersected.material.color.setHSL(hovered_hsl.h,hovered_hsl.s,hovered_hsl.l);
+				}
+				intersected = intersects[ 0 ].object;
+				hovered_hsl = intersected.material.color.getHSL();
+				intersected.material.color.setHSL(0,0,1 );
+			}
+
+		} else {
+			//if mouse just moved off a sphere
+			if ( intersected ) {
+				intersected.material.color.setHSL(hovered_hsl.h,hovered_hsl.s,hovered_hsl.l);
+			}
+			intersected = null;
+		}
+	}
+
+	var selected;
+
+	function onDocumentMouseDown( event ) {
+		event.preventDefault();
+		// click two spheres to swap them
+		//intersected constantly updates, swap when 2nd sphere has been selected
+		if( intersected ) {
+			if( selected ) {
+				swap(intersected, selected);
+			} else {
+					selected = intersected;
+				}
+		}
+		console.log(selected);
+	}
+
+	function swap(obj1, obj2) {
+		console.log(obj1,obj2);
+		var x_avg = (obj1.position.x + obj2.position.x) / 2;
+		var y_avg = (obj1.position.y + obj2.position.y) / 2;
+		var z_avg = (obj1.position.z + obj2.position.z) / 2;
+		drawElem(x_avg, y_avg, z_avg, 0);
+		selected = null;
+	}
+
+	function onResize() {
+		Wwidth = window.innerWidth;
+		Wheight = window.innerHeight;
+		camera.aspect = Wwidth / Wheight;
+		camera.updateProjectionMatrix();
+		renderer.setSize(Wwidth, Wheight);
+	}
+
+	function animate() {
+		animframe = requestAnimationFrame(animate);
+		render();
+		stats.update();
+	}
+
+	function render() {
+		renderer.render(scene, camera);
+	}
+
+	init();
+	animate();
+	</script>
+</body>
+</html>

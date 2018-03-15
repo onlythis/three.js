@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>Vine</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0,
+	 maximum-scale=1.0">
+	<style>
+	body {
+		color: #cccccc;
+		font-family:Monospace;
+		font-size:13px;
+		text-align:center;
+		background-color: #050505;
+		margin: 0px;
+		overflow: hidden;
+	}
+	#info {
+		position: absolute;
+		top: 0px; width: 100%;
+		padding: 5px;
+	}
+	</style>
+</head>
+<body>
+	<div id="info">Left click: rotate. Right click: translate. Scroll: zoom.</div>
+	<script src="../build/three.js"></script>
+	<script src="js/controls/OrbitControls.js"></script>
+	<script>
+
+	'use strict';
+
+	var spin=0, count=0, flow=0, flow_dir=true;
+	var prev_root = [0,0,0];
+	var prev_arm = [0,0,0];
+
+	function render() {
+		middle.position.y = spin*15/Math.PI*4-20;
+		//follows red squares but doesn't round
+		revolve.position.x=Math.sin(spin)*15*4;
+		revolve.position.z=Math.cos(spin)*15*4;
+		//revolve.position.y=spin*15/Math.PI*4;
+		revolve.rotateY(.005);
+
+		//arm is child of revolve.
+		arm.position.z = Math.sin(spin*8)*8;
+		arm.position.y = Math.cos(spin*8)*8;
+		arm.rotateX(.015);
+
+		//wave is child of arm.
+		wave.position.z = Math.sin(spin*3)*14;
+		wave2.position.z = -wave.position.z;
+		//moves in and out, touches arm then moves away.
+		//wave.position.y = Math.cos(spin*4)*8;
+		//wave2.position.y = -wave.position.y;
+		worldpos.setFromMatrixPosition(arm.matrixWorld);
+		//let arm_pos = new Array(Math.round(worldpos.x/2)*2,Math.round(worldpos.y/2)*2, Math.round(worldpos.z/2)*2);
+		let arm_pos = new Array(worldpos.x,worldpos.y, worldpos.z);
+		worldpos.setFromMatrixPosition(wave.matrixWorld);
+		let wave_pos = new Array(worldpos.x, worldpos.y, worldpos.z);
+		worldpos.setFromMatrixPosition(wave2.matrixWorld);
+		let wave_pos2 = new Array(worldpos.x, worldpos.y, worldpos.z);
+
+		//let is_same_arm = prev_arm.every(function(element, index) {return element === arm_pos[index];});
+		/*
+		if(!is_same_arm) {
+			drawbranch(arm_pos, spin);
+			prev_arm = new Array(arm_pos[0], arm_pos[1], arm_pos[2]);
+		}
+		*/
+
+		count=(count+1)%5;
+		if(!count){
+			drawbranch(arm_pos, spin);
+			drawwave(wave_pos);
+			drawwave(wave_pos2);
+		}
+
+		if(spin<Math.PI*2){
+			spin+=.005;
+		} else {
+			continueAnim=false;
+		}
+		renderer.render(scene, camera);
+	}
+
+
+	var root, revolve, center, arm, wave, wave2, middle, sphere;
+	var scene, camera, renderer, controls;
+	var worldpos = new THREE.Vector3();
+	var width = window.innerWidth, height = window.innerHeight;
+	var animframe;
+	var continueAnim = true;
+
+	function init() {
+		scene = new THREE.Scene();
+		camera = new THREE.PerspectiveCamera(50, width / height, 0.3, 1000);
+		//scene.position.y-=20;
+		//finally figured out the reason worldpos was 20 off.
+		camera.position.z = 150;
+		camera.position.y = 0;
+		camera.position.x = 0;
+		camera.lookAt(scene.position);
+
+		root = new THREE.Mesh(boxGeoinvis, boxMatinvis);
+		scene.add(root);
+
+		revolve = new THREE.Mesh(boxGeoinvis, boxMatinvis);
+		arm = new THREE.Mesh(boxGeo, boxMat2);
+		wave = new THREE.Mesh(boxGeoinvis, boxMat2);
+		wave2 = new THREE.Mesh(boxGeoinvis, boxMat2);
+
+		scene.add(revolve);
+		revolve.add(arm);
+		arm.add(wave);
+		arm.add(wave2);
+
+		middle = new THREE.Mesh(boxGeo, boxMat);
+		scene.add(middle);
+
+		renderer = new THREE.WebGLRenderer();
+		renderer.setPixelRatio(window.devicePixelRatio);
+		renderer.setSize(width, height);
+		renderer.setClearColor(0x0E2255);
+		renderer.shadowMap.enabled = true;
+
+		controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+		const ambientLight = new THREE.AmbientLight();
+		scene.add(ambientLight);
+
+		const light = new THREE.DirectionalLight();
+		light.position.set(200, 100, 200);
+		light.castShadow = true;
+		light.shadow.camera.left = -100;
+		light.shadow.camera.right = 100;
+		light.shadow.camera.top = 100;
+		light.shadow.camera.bottom = -100;
+		scene.add(light);
+
+		drawcenter();
+		document.body.appendChild(renderer.domElement);
+
+		window.addEventListener('resize', onResize);
+	}
+
+
+		function drawwave(loc, spin) {
+			let center = new THREE.Group();
+			let set = new Array(loc[0],loc[1],loc[2]);
+			scene.add(center);
+			const obj = new THREE.Mesh(boxGeoWave, boxMatWave);
+			obj.castShadow = true;
+			obj.receiveShadow = true;
+			obj.position.set(set[0],set[1],set[2]);
+			center.add(obj);
+		}
+
+		function drawbranch(loc, rot) {
+			let center = new THREE.Group();
+			let set = new Array(loc[0],loc[1],loc[2]);
+			scene.add(center);
+			const boxGeo = new THREE.CubeGeometry(1.5,1.5,1.5);
+
+			const obj = new THREE.Mesh(boxGeo, boxMat2);
+			obj.castShadow = true;
+			obj.receiveShadow = true;
+			obj.position.set(set[0],set[1],set[2]);
+			//obj.rotateY(rot);
+			center.add(obj);
+			return obj;
+		}
+
+		function drawcenter() {
+			let center = new THREE.Group();
+			scene.add(center);
+			const boxGeo = new THREE.CubeGeometry(4,4,4);
+			const boxMat = new THREE.MeshPhongMaterial({
+				color: new THREE.Color("rgb(0, 0, 128)"),
+				shading: THREE.FlatShading,
+				transparent: true,
+				opacity: .5
+			});
+			const obj = new THREE.Mesh(boxGeo, boxMat);
+			obj.castShadow = true;
+			obj.receiveShadow = true;
+			worldpos.setFromMatrixPosition(obj.matrixWorld);
+			obj.position.set(worldpos.x,worldpos.y,worldpos.z);
+			center.add(obj);
+			return obj;
+		}
+
+	function onResize() {
+		width = window.innerWidth;
+		height = window.innerHeight;
+		camera.aspect = width / height;
+		camera.updateProjectionMatrix();
+		renderer.setSize(width, height);
+	}
+
+	function animate() {
+		animframe = requestAnimationFrame(animate);
+		render();
+		if(!continueAnim){
+			cancelAnimationFrame(animframe);
+		}
+	}
+
+	var boxGeo = new THREE.CubeGeometry(4,4,4);
+	var boxMat = new THREE.MeshPhongMaterial({
+		color: new THREE.Color("rgb(255, 0, 0)"),
+		shading: THREE.FlatShading,
+		transparent: true,
+		opacity: .5
+	});
+	var boxGeo2 = new THREE.CubeGeometry(4,4,2);
+	var boxMat2 = new THREE.MeshPhongMaterial({
+		color: new THREE.Color("rgb(0, 255, 0)"),
+		shading: THREE.FlatShading,
+		transparent: true,
+		opacity: .5
+	});
+	var boxGeoinvis = new THREE.CubeGeometry(0,0,0);
+	var boxMatinvis = new THREE.MeshPhongMaterial({
+		color: new THREE.Color("rgb(0, 0, 0)"),
+		transparent: true,
+		opacity: 1
+	});
+	var boxGeoWave = new THREE.SphereGeometry(1, 4, 4);
+	var boxMatWave = new THREE.MeshPhongMaterial({
+		color: new THREE.Color("rgb(255, 0, 0)"),
+		shading: THREE.FlatShading,
+		transparent: true,
+		opacity: .5
+	});
+	var sphereGeo = new  THREE.SphereGeometry(60, 32, 32);
+
+	init();
+	animate();
+
+	</script>
+</body>
+</html>
