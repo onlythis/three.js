@@ -34,6 +34,7 @@
 
 	var effectController = {
 		reset: false,
+		movingSpeed: 100,
 		particleCount: 128
 	};
 
@@ -99,6 +100,7 @@
 	function initGUI() {
 		var gui = new dat.GUI();
 		gui.add( effectController, "reset" ).onChange( function( value ) { return; } );
+		gui.add( effectController, "movingSpeed", 1, 100, 1 ).onChange( function( value ) { moving_speed = value; } );
 		gui.add( effectController, "particleCount", 0, 128, 1 ).onChange( function( value ) {
 			scene.remove(group);
 			group = new THREE.Group();
@@ -129,8 +131,7 @@
 
 	var mouse = new THREE.Vector2();
 	var raycaster = new THREE.Raycaster();
-	var intersected, hovered_hsl;
-
+	var intersected;
 	function onDocumentMouseMove( event ) {
 		event.preventDefault();
 		mouse.set( ( event.clientX / window.innerWidth ) * 2 - 1, - ( event.clientY / window.innerHeight ) * 2 + 1 );
@@ -143,25 +144,24 @@
 			//if mouse is still over same object skip
 			if ( intersected != intersects[0].object){
 				//if mouse was on an obj and moves to another without becoming null
-				if(intersected){
-					intersected.material.color.setHSL(hovered_hsl.h,hovered_hsl.s,hovered_hsl.l);
+				if(intersected && intersected != selected){
+					intersected.material.emissive.setHex( 0x000000 );
 				}
 				intersected = intersects[ 0 ].object;
-				hovered_hsl = intersected.material.color.getHSL();
-				intersected.material.color.setHSL(0,0,1 );
+				intersected.material.emissive.setHex( 0xffffff );
 			}
 
 		} else {
 			//if mouse just moved off a sphere
-			if ( intersected ) {
-				intersected.material.color.setHSL(hovered_hsl.h,hovered_hsl.s,hovered_hsl.l);
+			//intersected gets reassigned to selected because the mouse moved in the same obj
+			if ( intersected && intersected != selected) {
+				intersected.material.emissive.setHex( 0x000000 );
 			}
 			intersected = null;
 		}
 	}
 
 	var selected;
-
 	function onDocumentMouseDown( event ) {
 		event.preventDefault();
 		// click two spheres to swap them
@@ -170,19 +170,38 @@
 			if( selected ) {
 				swap(intersected, selected);
 			} else {
+					//stays emissive while selected as first sphere to swap
 					selected = intersected;
+					selected.material.emissive.setHex( 0xffffff );
 				}
 		}
-		console.log(selected);
+		//console.log(selected);
 	}
 
+	var motion = false;
+	var motionCounter = 0;
+	var moving_vel = [];
+	var moving_obj1, moving_obj2;
+	var moving_speed = 100;
 	function swap(obj1, obj2) {
-		console.log(obj1,obj2);
+		//console.log(obj1,obj2);
+		moving_vel = [];
 		var x_avg = (obj1.position.x + obj2.position.x) / 2;
 		var y_avg = (obj1.position.y + obj2.position.y) / 2;
 		var z_avg = (obj1.position.z + obj2.position.z) / 2;
 		drawElem(x_avg, y_avg, z_avg, 0);
+		selected.material.emissive.setHex( 0x000000 );
+		intersected.material.emissive.setHex( 0x000000 );
 		selected = null;
+		var x_move = (obj1.position.x - obj2.position.x) / moving_speed;
+		var y_move = (obj1.position.y - obj2.position.y) / moving_speed;
+		var z_move = (obj1.position.z - obj2.position.z) / moving_speed;
+		moving_obj1 = obj1;
+		moving_obj2 = obj2;
+		moving_vel.push(x_move);
+		moving_vel.push(y_move);
+		moving_vel.push(z_move);
+		motion=true;
 	}
 
 	function onResize() {
@@ -194,9 +213,21 @@
 	}
 
 	function animate() {
+		var time = Date.now() * 0.001;
 		animframe = requestAnimationFrame(animate);
-		render();
 		stats.update();
+		if(motion) {
+			moving_obj1.position.x -= moving_vel[0];
+			moving_obj1.position.y -= moving_vel[1];
+			moving_obj1.position.z -= moving_vel[2];
+			moving_obj2.position.x += moving_vel[0];
+			moving_obj2.position.y += moving_vel[1];
+			moving_obj2.position.z += moving_vel[2];
+			motionCounter += 1;
+			if(motionCounter > moving_speed - 1) { motionCounter = 0, motion = false;}
+		}
+
+		render();
 	}
 
 	function render() {
