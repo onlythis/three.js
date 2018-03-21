@@ -189,6 +189,8 @@
 	var moving_obj1, moving_obj2;
 	var moving_speed = 20;
 	var atan1, atan2, radius, x_avg, y_avg, z_avg;
+	var swap_obj1x, swap_obj1y, swap_obj2x, swap_obj2y;
+	var pi = Math.PI;
 	function swap(obj1, obj2) {
 		//console.log(obj1,obj2);
 		//find middle of obj1, obj2
@@ -210,10 +212,10 @@
 
 		//finding radians(position on circle created by the two objs and their center) of objs with regards to the avg_pos(middle)
 		//swap_obj is position with regards to the avg pos of the two.
-		var swap_obj1x = obj1.position.x - x_avg;
-		var swap_obj1y = obj1.position.y - y_avg;
-		var swap_obj2x = obj2.position.x - x_avg;
-		var swap_obj2y = obj2.position.y - y_avg;
+		swap_obj1x = obj1.position.x - x_avg;
+		swap_obj1y = obj1.position.y - y_avg;
+		swap_obj2x = obj2.position.x - x_avg;
+		swap_obj2y = obj2.position.y - y_avg;
 		//console.log(Math.atan2(swap_obj1y, swap_obj1x));
 		// Math.atan2 returns the radians of two coordinates on a plane. (0,0) is center of circle. Takes in y first, x second (y,x)
 		// cosine of atan2 gives x coordinate
@@ -230,11 +232,18 @@
 		// if moving, update swapped objs positions.
 		if(motion) {
 			//obj starts moving from its current position.
+			motionCounter += .001;
 			moving_obj1.position.x = Math.cos(atan1 + motionCounter * moving_speed) * radius + x_avg;
 			moving_obj1.position.y = Math.sin(atan1 + motionCounter * moving_speed) * radius + y_avg;
 			moving_obj2.position.x = Math.cos(atan2 + motionCounter * moving_speed) * radius + x_avg;
 			moving_obj2.position.y = Math.sin(atan2 + motionCounter * moving_speed) * radius + y_avg;
-			motionCounter += .001;
+			if( motionCounter * moving_speed >= pi ) {
+				motion = false;
+				moving_obj1.position.x = Math.cos(atan1 + pi) * radius + x_avg;
+				moving_obj1.position.y = Math.sin(atan1 + pi) * radius + y_avg;
+				moving_obj2.position.x = Math.cos(atan2 + pi) * radius + x_avg;
+				moving_obj2.position.y = Math.sin(atan2 + pi) * radius + y_avg;
+			}
 			//if(motionCounter > moving_speed - 1) { motionCounter = 0, motion = false;}
 		}
 
