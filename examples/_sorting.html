@@ -112,7 +112,7 @@
 
 	var effectController = {
 		reset: resetCircle,
-		movingSpeed: 20,
+		movingSpeed: 50,
 		particleCount: 128
 	};
 	function resetCircle(){
@@ -184,69 +184,69 @@
 	}
 
 	var motion = false;
-	var motionCounter = 0;
-	var moving_vel = [];
-	var moving_obj1, moving_obj2;
-	var moving_speed = 20;
-	var atan1, atan2, radius, x_avg, y_avg, z_avg;
-	var swap_obj1x, swap_obj1y, swap_obj2x, swap_obj2y;
+	var motionCounter = [];
+	var moving_obj = [];
+	var moving_speed = 50;
+	var atan1 = [], atan2 = [], radius = [], x_avg = [], y_avg = [];
 	var pi = Math.PI;
+
+	// glitches when swapping an obj that is already moving. glitch happens when the swap before finishes moving.
+	// looks like they briefly swap positions(only visible sometimes). Works out in the end though.
+
 	function swap(obj1, obj2) {
-		//console.log(obj1,obj2);
 		//find middle of obj1, obj2
-		x_avg = (obj1.position.x + obj2.position.x) / 2;
-		y_avg = (obj1.position.y + obj2.position.y) / 2;
-		z_avg = (obj1.position.z + obj2.position.z) / 2;
+		x_avg.push((obj1.position.x + obj2.position.x) / 2);
+		y_avg.push((obj1.position.y + obj2.position.y) / 2);
 
 		//unemissive and reassign selected and intersected
 		selected.material.emissive.setHex( 0x000000 );
 		intersected.material.emissive.setHex( 0x000000 );
 		selected = null;
 		intersected = null;
-		moving_vel = [];
 
-		//assign obj's to move to global variable so can be in animate function. create array for moving velocity.
-		moving_obj1 = obj1;
-		moving_obj2 = obj2;
+    // moving_obj is 2d array. pairs of swapping objs.
+		moving_obj.push([]);
+		moving_obj[moving_obj.length - 1].push(obj1);
+		moving_obj[moving_obj.length - 1].push(obj2);
 		motion=true;
 
 		//finding radians(position on circle created by the two objs and their center) of objs with regards to the avg_pos(middle)
-		//swap_obj is position with regards to the avg pos of the two.
-		swap_obj1x = obj1.position.x - x_avg;
-		swap_obj1y = obj1.position.y - y_avg;
-		swap_obj2x = obj2.position.x - x_avg;
-		swap_obj2y = obj2.position.y - y_avg;
-		//console.log(Math.atan2(swap_obj1y, swap_obj1x));
+		//swap_obj is avg pos of the pair of swapping objs
+		var swap_obj1x, swap_obj1y, swap_obj2x, swap_obj2y;
+		swap_obj1x = obj1.position.x - x_avg[x_avg.length - 1];
+		swap_obj1y = obj1.position.y - y_avg[y_avg.length - 1];
+		swap_obj2x = obj2.position.x - x_avg[x_avg.length - 1];
+		swap_obj2y = obj2.position.y - y_avg[y_avg.length - 1];
 		// Math.atan2 returns the radians of two coordinates on a plane. (0,0) is center of circle. Takes in y first, x second (y,x)
 		// cosine of atan2 gives x coordinate
-		atan1 = Math.atan2(swap_obj1y, swap_obj1x);
-		atan2 = Math.atan2(swap_obj2y, swap_obj2x);
+		atan1.push(Math.atan2(swap_obj1y, swap_obj1x));
+		atan2.push(Math.atan2(swap_obj2y, swap_obj2x));
 		//distance formula
-		radius = Math.sqrt(Math.pow(obj1.position.x - obj2.position.x , 2) + Math.pow(obj1.position.y - obj2.position.y , 2)) / 2;
-		motionCounter = 0;
-		// how far to swing around?
+		radius.push(Math.sqrt(Math.pow(obj1.position.x - obj2.position.x , 2) + Math.pow(obj1.position.y - obj2.position.y , 2)) / 2);
+		//counter needed to ensure proper distance and time of rotation
+		motionCounter.push(0);
 	}
 
 	function animate() {
-		//var time = Date.now() * 0.001;
-		// if moving, update swapped objs positions.
-		if(motion) {
+		// for each obj currently moving
+		for(var x = 0; x < moving_obj.length; x++) {
 			//obj starts moving from its current position.
-			motionCounter += .001;
-			moving_obj1.position.x = Math.cos(atan1 + motionCounter * moving_speed) * radius + x_avg;
-			moving_obj1.position.y = Math.sin(atan1 + motionCounter * moving_speed) * radius + y_avg;
-			moving_obj2.position.x = Math.cos(atan2 + motionCounter * moving_speed) * radius + x_avg;
-			moving_obj2.position.y = Math.sin(atan2 + motionCounter * moving_speed) * radius + y_avg;
-			if( motionCounter * moving_speed >= pi ) {
-				motion = false;
-				moving_obj1.position.x = Math.cos(atan1 + pi) * radius + x_avg;
-				moving_obj1.position.y = Math.sin(atan1 + pi) * radius + y_avg;
-				moving_obj2.position.x = Math.cos(atan2 + pi) * radius + x_avg;
-				moving_obj2.position.y = Math.sin(atan2 + pi) * radius + y_avg;
-			}
-			//if(motionCounter > moving_speed - 1) { motionCounter = 0, motion = false;}
-		}
+			motionCounter[x] += .001;
+			moving_obj[x][0].position.x = Math.cos(atan1[x] + motionCounter[x] * moving_speed) * radius[x] + x_avg[x];
+			moving_obj[x][0].position.y = Math.sin(atan1[x] + motionCounter[x] * moving_speed) * radius[x] + y_avg[x];
+			moving_obj[x][1].position.x = Math.cos(atan2[x] + motionCounter[x] * moving_speed) * radius[x] + x_avg[x];
+			moving_obj[x][1].position.y = Math.sin(atan2[x] + motionCounter[x] * moving_speed) * radius[x] + y_avg[x];
+			//motionCounter * moving_speed will equal pi when each obj in a pair has rotated exactly 180 degrees
+			if( motionCounter[x] * moving_speed >= pi ) {
+				moving_obj[x][0].position.x = Math.cos(atan1[x] + pi) * radius[x] + x_avg[x];
+				moving_obj[x][0].position.y = Math.sin(atan1[x] + pi) * radius[x] + y_avg[x];
+				moving_obj[x][1].position.x = Math.cos(atan2[x] + pi) * radius[x] + x_avg[x];
+				moving_obj[x][1].position.y = Math.sin(atan2[x] + pi) * radius[x] + y_avg[x];
+				//shift() - pops the first elem in an array
+				moving_obj.shift(); motionCounter.shift(); atan1.shift(); atan2.shift(); radius.shift(); x_avg.shift(); y_avg.shift();
 
+			}
+		}
 		requestAnimationFrame(animate);
 		stats.update();
 		renderer.render(scene, camera);
