@@ -118,8 +118,9 @@
 	var effectController = {
 		reset: resetCircle,
 		shuffle: shuffleAll,
+		shuffleSize: 5,
 		movingSpeed: 50,
-		particleCount: 128
+		sphereCount: 128
 	};
 	function resetCircle(){
 		scene.remove(group);
@@ -131,8 +132,9 @@
 		var gui = new dat.GUI();
 		gui.add( effectController, "reset" );
 		gui.add( effectController, "shuffle");
+		gui.add( effectController, "shuffleSize", 1, 20, 1 ).onChange( function( value ) { shuffle_size = value; } );
 		gui.add( effectController, "movingSpeed", 1, 100, 1 ).onChange( function( value ) { moving_speed = value; } );
-		gui.add( effectController, "particleCount", 0, 128, 1 ).onChange( function( value ) {
+		gui.add( effectController, "sphereCount", 0, 128, 1 ).onChange( function( value ) {
 			scene.remove(group);
 			group = new THREE.Group();
 			scene.add( group );
@@ -213,6 +215,7 @@
 			intersected.material.emissive.setHex( 0x000000 );
 			intersected = null;
 		}
+
     // swapping_obj is 2d array. pairs of swapping objs.
 		swapping_obj.push([]);
 		swapping_obj[swapping_obj.length - 1].push(obj1);
@@ -237,16 +240,27 @@
 
 	//how is it able to have same obj in two swaps simultaneously?  1 obj is assigned to mutliple elements in swapping_obj array.
 
+	var shuffle_size = 5;
 	function shuffleAll() {
 		//var curr_time = Date.now() * 0.001;
-		for(var x=0; x<5; x++){
-			var first = order[Math.round(Math.random() * (sphere_count - 1))];
-			var second = order[Math.round(Math.random() * (sphere_count - 1))];
-			swap(first, second);
+		if(shuffle_size * 2 > sphere_count) { console.log("shuffle size to large"); return; }
+		var elems = [];
+		for(var x=0; x<shuffle_size; x++){
+			var first_rand = Math.round(Math.random() * (sphere_count - 1));
+			var second_rand = Math.round(Math.random() * (sphere_count - 1));
+			// don't want to shuffle same sphere twice
+			while(elems.indexOf(first_rand) != -1){
+				first_rand = Math.round(Math.random() * (sphere_count - 1));
+			}
+			elems.push(first_rand);
+			while(elems.indexOf(second_rand) != -1){
+				second_rand = Math.round(Math.random() * (sphere_count - 1));
+			}
+			elems.push(second_rand);
+			swap(order[first_rand], order[second_rand]);
 		}
 	}
 
-	var time = Date.now() * 0.001;
 	function animate() {
 		//time = Date.now() * 0.001;
 		// for each obj currently moving
@@ -265,7 +279,9 @@
 				swapping_obj[x][1].position.y = Math.sin(atan2[x] + pi) * radius[x] + y_avg[x];
 				//shift() - removes the first element in an array
 				swapping_obj.shift(); motion_counter.shift(); atan1.shift(); atan2.shift(); radius.shift(); x_avg.shift(); y_avg.shift();
-
+				//if two swapping_obj's reach pi at same time, shift() will cause skipping. so need x--
+				//why doesn't this cause index out of bounds? for loop condition(x < swapping_obj.length) re-evaluates every loop.
+				x--;
 			}
 		}
 		requestAnimationFrame(animate);
@@ -275,6 +291,11 @@
 
 	init();
 	animate();
+
+	/* calculate entropy?
+		shuffle in timed intervals
+
+	*/
 	</script>
 </body>
 </html>
