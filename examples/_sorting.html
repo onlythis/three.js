@@ -30,8 +30,8 @@
 	<script src="js/libs/stats.min.js"></script>
 	<script>
 	'use strict';
-	var scene, camera, renderer, controls, group, container, stats;
 
+	var scene, camera, renderer, controls, group, container, stats;
 	function init() {
 		container = document.createElement( 'div' );
 		document.body.appendChild( container );
@@ -68,7 +68,7 @@
 
 		group = new THREE.Group();
 		scene.add( group );
-		initCircle(128);
+		initCircle(sphere_count);
 		initGUI();
 		document.addEventListener( 'mousemove', onDocumentMouseMove, false );
 		document.addEventListener( 'mousedown', onDocumentMouseDown, false );
@@ -104,14 +104,20 @@
 	}
 
 	// Creates sphere obj's in a circle starting from east.
+	var order = [];
+	var sphere_count = 128;
 	function initCircle(count){
+		sphere_count = count;
+		order = [];
 		for(var x = 0; x<count; x++){
-			drawElem(Math.cos(x / count * 2 * Math.PI) * 10, Math.sin(x / count * 2 * Math.PI) * 10, 0, x * 360 / count);
+			order.push(drawElem(Math.cos(x / count * 2 * Math.PI) * 10, Math.sin(x / count * 2 * Math.PI) * 10, 0, x * 360 / count));
+			//scene.children[2].remove(order[23]);
 		}
 	}
 
 	var effectController = {
 		reset: resetCircle,
+		shuffle: shuffleAll,
 		movingSpeed: 50,
 		particleCount: 128
 	};
@@ -119,11 +125,12 @@
 		scene.remove(group);
 		group = new THREE.Group();
 		scene.add( group );
-		initCircle(128);
+		initCircle(sphere_count);
 	}
 	function initGUI() {
 		var gui = new dat.GUI();
 		gui.add( effectController, "reset" );
+		gui.add( effectController, "shuffle");
 		gui.add( effectController, "movingSpeed", 1, 100, 1 ).onChange( function( value ) { moving_speed = value; } );
 		gui.add( effectController, "particleCount", 0, 128, 1 ).onChange( function( value ) {
 			scene.remove(group);
@@ -183,9 +190,8 @@
 		//console.log(selected);
 	}
 
-	var motion = false;
-	var motionCounter = [];
-	var moving_obj = [];
+	var motion_counter = [];
+	var swapping_obj = [];
 	var moving_speed = 50;
 	var atan1 = [], atan2 = [], radius = [], x_avg = [], y_avg = [];
 	var pi = Math.PI;
@@ -199,16 +205,18 @@
 		y_avg.push((obj1.position.y + obj2.position.y) / 2);
 
 		//unemissive and reassign selected and intersected
-		selected.material.emissive.setHex( 0x000000 );
-		intersected.material.emissive.setHex( 0x000000 );
-		selected = null;
-		intersected = null;
-
-    // moving_obj is 2d array. pairs of swapping objs.
-		moving_obj.push([]);
-		moving_obj[moving_obj.length - 1].push(obj1);
-		moving_obj[moving_obj.length - 1].push(obj2);
-		motion=true;
+		if(selected){
+			selected.material.emissive.setHex( 0x000000 );
+			selected = null;
+		}
+		if(intersected){
+			intersected.material.emissive.setHex( 0x000000 );
+			intersected = null;
+		}
+    // swapping_obj is 2d array. pairs of swapping objs.
+		swapping_obj.push([]);
+		swapping_obj[swapping_obj.length - 1].push(obj1);
+		swapping_obj[swapping_obj.length - 1].push(obj2);
 
 		//finding radians(position on circle created by the two objs and their center) of objs with regards to the avg_pos(middle)
 		//swap_obj is avg pos of the pair of swapping objs
@@ -224,26 +232,39 @@
 		//distance formula
 		radius.push(Math.sqrt(Math.pow(obj1.position.x - obj2.position.x , 2) + Math.pow(obj1.position.y - obj2.position.y , 2)) / 2);
 		//counter needed to ensure proper distance and time of rotation
-		motionCounter.push(0);
+		motion_counter.push(0);
 	}
 
+	//how is it able to have same obj in two swaps simultaneously?  1 obj is assigned to mutliple elements in swapping_obj array.
+
+	function shuffleAll() {
+		//var curr_time = Date.now() * 0.001;
+		for(var x=0; x<5; x++){
+			var first = order[Math.round(Math.random() * (sphere_count - 1))];
+			var second = order[Math.round(Math.random() * (sphere_count - 1))];
+			swap(first, second);
+		}
+	}
+
+	var time = Date.now() * 0.001;
 	function animate() {
+		//time = Date.now() * 0.001;
 		// for each obj currently moving
-		for(var x = 0; x < moving_obj.length; x++) {
+		for(var x = 0; x < swapping_obj.length; x++) {
 			//obj starts moving from its current position.
-			motionCounter[x] += .001;
-			moving_obj[x][0].position.x = Math.cos(atan1[x] + motionCounter[x] * moving_speed) * radius[x] + x_avg[x];
-			moving_obj[x][0].position.y = Math.sin(atan1[x] + motionCounter[x] * moving_speed) * radius[x] + y_avg[x];
-			moving_obj[x][1].position.x = Math.cos(atan2[x] + motionCounter[x] * moving_speed) * radius[x] + x_avg[x];
-			moving_obj[x][1].position.y = Math.sin(atan2[x] + motionCounter[x] * moving_speed) * radius[x] + y_avg[x];
-			//motionCounter * moving_speed will equal pi when each obj in a pair has rotated exactly 180 degrees
-			if( motionCounter[x] * moving_speed >= pi ) {
-				moving_obj[x][0].position.x = Math.cos(atan1[x] + pi) * radius[x] + x_avg[x];
-				moving_obj[x][0].position.y = Math.sin(atan1[x] + pi) * radius[x] + y_avg[x];
-				moving_obj[x][1].position.x = Math.cos(atan2[x] + pi) * radius[x] + x_avg[x];
-				moving_obj[x][1].position.y = Math.sin(atan2[x] + pi) * radius[x] + y_avg[x];
-				//shift() - pops the first elem in an array
-				moving_obj.shift(); motionCounter.shift(); atan1.shift(); atan2.shift(); radius.shift(); x_avg.shift(); y_avg.shift();
+			motion_counter[x] += .001;
+			swapping_obj[x][0].position.x = Math.cos(atan1[x] + motion_counter[x] * moving_speed) * radius[x] + x_avg[x];
+			swapping_obj[x][0].position.y = Math.sin(atan1[x] + motion_counter[x] * moving_speed) * radius[x] + y_avg[x];
+			swapping_obj[x][1].position.x = Math.cos(atan2[x] + motion_counter[x] * moving_speed) * radius[x] + x_avg[x];
+			swapping_obj[x][1].position.y = Math.sin(atan2[x] + motion_counter[x] * moving_speed) * radius[x] + y_avg[x];
+			//motion_counter * moving_speed will equal pi when each obj in a pair has rotated exactly 180 degrees
+			if( motion_counter[x] * moving_speed >= pi ) {
+				swapping_obj[x][0].position.x = Math.cos(atan1[x] + pi) * radius[x] + x_avg[x];
+				swapping_obj[x][0].position.y = Math.sin(atan1[x] + pi) * radius[x] + y_avg[x];
+				swapping_obj[x][1].position.x = Math.cos(atan2[x] + pi) * radius[x] + x_avg[x];
+				swapping_obj[x][1].position.y = Math.sin(atan2[x] + pi) * radius[x] + y_avg[x];
+				//shift() - removes the first element in an array
+				swapping_obj.shift(); motion_counter.shift(); atan1.shift(); atan2.shift(); radius.shift(); x_avg.shift(); y_avg.shift();
 
 			}
 		}
