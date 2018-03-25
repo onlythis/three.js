@@ -37,7 +37,7 @@
 		document.body.appendChild( container );
 		scene = new THREE.Scene();
 		camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.3, 1000);
-		camera.position.z = 25;
+		camera.position.z = 30;
 		camera.position.y = 0;
 		camera.position.x = 0;
 		camera.lookAt(scene.position);
@@ -146,10 +146,12 @@
 
 	var effectController = {
 		reset: resetCircle,
-		shuffle: shuffleAll,
+		stop: stopAnim,
 		checkSorted: sortCheck,
+		shuffle: shuffleSome,
 		shuffleSize: 5,
-		movingSpeed: 50,
+		shuffleTimeInterval: .5,
+		shuffleSpeed: 50,
 		sphereCount: 128
 	};
 	function resetCircle(){
@@ -161,10 +163,12 @@
 	function initGUI() {
 		var gui = new dat.GUI();
 		gui.add( effectController, "reset" );
-		gui.add( effectController, "shuffle");
+		gui.add( effectController, "stop" );
 		gui.add( effectController, "checkSorted");
-		gui.add( effectController, "shuffleSize", 1, 20, 1 ).onChange( function( value ) { shuffle_size = value; } );
-		gui.add( effectController, "movingSpeed", 1, 100, 1 ).onChange( function( value ) { moving_speed = value; } );
+		gui.add( effectController, "shuffle");
+		gui.add( effectController, "shuffleSize", 1, 40, 1 ).onChange( function( value ) { shuffle_size = value; } );
+		gui.add( effectController, "shuffleTimeInterval", 0, 1, .02 ).onChange( function( value ) { shuffle_time_interval = value; } );
+		gui.add( effectController, "shuffleSpeed", 1, 100, 1 ).onChange( function( value ) { swapping_speed = value; } );
 		gui.add( effectController, "sphereCount", 0, 128, 1 ).onChange( function( value ) {
 			scene.remove(group);
 			group = new THREE.Group();
@@ -225,7 +229,7 @@
 
 	var motion_counter = [];
 	var swapping_obj = [];
-	var moving_speed = 50;
+	var swapping_speed = 50;
 	var atan1 = [], atan2 = [], radius = [], x_avg = [], y_avg = [];
 	var pi = Math.PI;
 
@@ -273,7 +277,8 @@
 	//how is it able to have same obj in two swaps simultaneously?  1 obj is assigned to mutliple elements in swapping_obj array.
 
 	var shuffle_size = 5;
-	function shuffleAll() {
+	var shuffle_stack = [];
+	function shuffleSome() {
 		//var curr_time = Date.now() * 0.001;
 		if(shuffle_size * 2 > sphere_count) { console.log("shuffle size to large"); return; }
 		var elems = [];
@@ -289,22 +294,34 @@
 				second_rand = Math.round(Math.random() * (sphere_count - 1));
 			}
 			elems.push(second_rand);
-			swap(spheres[first_rand], spheres[second_rand]);
+			shuffle_stack.push( spheres[first_rand]);
+			shuffle_stack.push(spheres[second_rand]);
 		}
 	}
 
+	var next_time = 0;
+	var start_anim;
+	var shuffle_time_interval = .5;
 	function animate() {
-		//time = Date.now() * 0.001;
+		// swaps spheres at set time intervals
+		if (shuffle_stack.length > 0) {
+			var time = Date.now() * 0.001;
+			while(time >= next_time && shuffle_stack.length > 0) {
+				swap(shuffle_stack.shift(), shuffle_stack.shift());
+				next_time = time + shuffle_time_interval;
+			}
+		}
+
 		// for each obj currently moving
 		for(var x = 0; x < swapping_obj.length; x++) {
 			//obj starts moving from its current position.
 			motion_counter[x] += .001;
-			swapping_obj[x][0].position.x = Math.cos(atan1[x] + motion_counter[x] * moving_speed) * radius[x] + x_avg[x];
-			swapping_obj[x][0].position.y = Math.sin(atan1[x] + motion_counter[x] * moving_speed) * radius[x] + y_avg[x];
-			swapping_obj[x][1].position.x = Math.cos(atan2[x] + motion_counter[x] * moving_speed) * radius[x] + x_avg[x];
-			swapping_obj[x][1].position.y = Math.sin(atan2[x] + motion_counter[x] * moving_speed) * radius[x] + y_avg[x];
-			//motion_counter * moving_speed will equal pi when each obj in a pair has rotated exactly 180 degrees
-			if( motion_counter[x] * moving_speed >= pi ) {
+			swapping_obj[x][0].position.x = Math.cos(atan1[x] + motion_counter[x] * swapping_speed) * radius[x] + x_avg[x];
+			swapping_obj[x][0].position.y = Math.sin(atan1[x] + motion_counter[x] * swapping_speed) * radius[x] + y_avg[x];
+			swapping_obj[x][1].position.x = Math.cos(atan2[x] + motion_counter[x] * swapping_speed) * radius[x] + x_avg[x];
+			swapping_obj[x][1].position.y = Math.sin(atan2[x] + motion_counter[x] * swapping_speed) * radius[x] + y_avg[x];
+			//motion_counter * swapping_speed will equal pi when each obj in a pair has rotated exactly 180 degrees
+			if( motion_counter[x] * swapping_speed >= pi ) {
 				swapping_obj[x][0].position.x = Math.cos(atan1[x] + pi) * radius[x] + x_avg[x];
 				swapping_obj[x][0].position.y = Math.sin(atan1[x] + pi) * radius[x] + y_avg[x];
 				swapping_obj[x][1].position.x = Math.cos(atan2[x] + pi) * radius[x] + x_avg[x];
@@ -317,9 +334,13 @@
 				x--;
 			}
 		}
-		requestAnimationFrame(animate);
+		start_anim = requestAnimationFrame(animate);
 		stats.update();
 		renderer.render(scene, camera);
+	}
+
+	function stopAnim() {
+		cancelAnimationFrame( start_anim );
 	}
 
 	init();
