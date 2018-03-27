@@ -299,22 +299,13 @@
 		}
 	}
 
-	var circular_swap_done = false;
-	function circularSwap( obj, atan1, atan2, radius, x_avg, y_avg, counter){
-		obj[0].position.x = Math.cos(atan1 + counter * swapping_speed) * radius + x_avg;
-		obj[0].position.y = Math.sin(atan1 + counter * swapping_speed) * radius + y_avg;
-		obj[1].position.x = Math.cos(atan2 + counter * swapping_speed) * radius + x_avg;
-		obj[1].position.y = Math.sin(atan2 + counter * swapping_speed) * radius + y_avg;
-
-		//motion_counter * swapping_speed will equal pi when each obj in a pair has rotated exactly 180 degrees
+	function circularSwap(counter, obj, atan, radius, x_avg, y_avg){
+		obj.position.x = Math.cos(atan + counter * swapping_speed) * radius + x_avg;
+		obj.position.y = Math.sin(atan + counter * swapping_speed) * radius + y_avg;
 		if( counter * swapping_speed >= pi ) {
-			obj[0].position.x = Math.cos(atan1 + pi) * radius + x_avg;
-			obj[0].position.y = Math.sin(atan1 + pi) * radius + y_avg;
-			obj[1].position.x = Math.cos(atan2 + pi) * radius + x_avg;
-			obj[1].position.y = Math.sin(atan2 + pi) * radius + y_avg;
-			return true;
+			obj.position.x = Math.cos(atan + pi) * radius + x_avg;
+			obj.position.y = Math.sin(atan + pi) * radius + y_avg;
 		}
-		return false;
 	}
 
 	var next_time = 0;
@@ -334,8 +325,17 @@
 		for(var x = 0; x < swapping_obj.length; x++) {
 			//obj starts moving from its current position.
 			motion_counter[x] += .001;
-			circular_swap_done = circularSwap( swapping_obj[x], atan1[x], atan2[x], radius[x], x_avg[x], y_avg[x], motion_counter[x] );
-			if( circular_swap_done ) {
+			swapping_obj[x][0].position.x = Math.cos(atan1[x] + motion_counter[x] * swapping_speed) * radius[x] + x_avg[x];
+			swapping_obj[x][0].position.y = Math.sin(atan1[x] + motion_counter[x] * swapping_speed) * radius[x] + y_avg[x];
+			swapping_obj[x][1].position.x = Math.cos(atan2[x] + motion_counter[x] * swapping_speed) * radius[x] + x_avg[x];
+			swapping_obj[x][1].position.y = Math.sin(atan2[x] + motion_counter[x] * swapping_speed) * radius[x] + y_avg[x];
+			//motion_counter * swapping_speed will equal pi when each obj in a pair has rotated exactly 180 degrees
+			if( motion_counter[x] * swapping_speed >= pi ) {
+				swapping_obj[x][0].position.x = Math.cos(atan1[x] + pi) * radius[x] + x_avg[x];
+				swapping_obj[x][0].position.y = Math.sin(atan1[x] + pi) * radius[x] + y_avg[x];
+				swapping_obj[x][1].position.x = Math.cos(atan2[x] + pi) * radius[x] + x_avg[x];
+				swapping_obj[x][1].position.y = Math.sin(atan2[x] + pi) * radius[x] + y_avg[x];
+				//console.log(swapping_obj[x][0].position.x, swapping_obj[x][0].position.y, swapping_obj[x][1].position.x, swapping_obj[x][1].position.y)
 				//shift() - removes the first element in an array
 				swapping_obj.shift(); motion_counter.shift(); atan1.shift(); atan2.shift(); radius.shift(); x_avg.shift(); y_avg.shift();
 				//if two swapping_obj's reach pi at same time, shift() will cause skipping. so need x--
@@ -349,8 +349,6 @@
 	}
 
 	function stopAnim() {
-		console.log("swapping obj length: " + swapping_obj.length);
-		console.log("shuffle_stack length: " + shuffle_stack.length);
 		cancelAnimationFrame( start_anim );
 	}
 
