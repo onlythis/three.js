@@ -131,8 +131,8 @@
 		checkSorted: sortCheck,
 		shuffle: shuffleSome,
 		shuffleSize: 5,
-		shuffleTimeInterval: .5,
-		shuffleSpeed: 50,
+		shuffleTimeInterval: .02,
+		shuffleSpeed: 90,
 		sphereCount: 128,
 		selectionSort : selectionSort
 	};
@@ -212,7 +212,7 @@
 
 	var motion_counter = [];
 	var swapping_obj = [];
-	var swapping_speed = 50;
+	var swapping_speed = 90;
 	var atan1 = [], atan2 = [], radius = [], x_avg = [], y_avg = [];
 	var pi = Math.PI;
 
@@ -260,7 +260,7 @@
 	//how is it able to have same obj in two swaps simultaneously?  1 obj is assigned to mutliple elements in swapping_obj array.
 
 	var shuffle_size = 5;
-	var shuffle_stack = [];
+	var swap_stack = [];
 	function shuffleSome() {
 		//var curr_time = Date.now() * 0.001;
 		if(shuffle_size * 2 > sphere_count) { console.log("shuffle size to large"); return; }
@@ -277,7 +277,7 @@
 				second_rand = Math.round(Math.random() * (sphere_count - 1));
 			}
 			elems.push(second_rand);
-			shuffle_stack.push( spheres[first_rand], spheres[second_rand]);
+			swap_stack.push( spheres[first_rand], spheres[second_rand]);
 		}
 	}
 
@@ -288,6 +288,7 @@
 			if(getObjbyIndex(x) == spheres[x]) { count++; }
 		}
 		console.log("spheres in initial index: " + count);
+		return sphere_count == count;
 	}
 
 	// returns the obj that is currently at index. Red sphere is index 0 and increases counterclockwise.
@@ -295,39 +296,35 @@
 		//console.log(precisionRound(spheres[index].position.x, 5) , sphere_pos[index][0] ,
 		// 						precisionRound(spheres[index].position.y, 5) , sphere_pos[index][1]);
 		for( var x = 0; x < sphere_pos.length; x++) {
-			if(precisionRound(spheres[index].position.x, 5) == sphere_pos[x][0] &&
-			 	 precisionRound(spheres[index].position.y, 5) == sphere_pos[x][1]) {
+			if(precisionRound(spheres[x].position.x, 5) == sphere_pos[index][0] &&
+			 	 precisionRound(spheres[x].position.y, 5) == sphere_pos[index][1]) {
 				return spheres[x];
 			}
 		}
 	}
 
+	var selection_sorting = false;
 	function selectionSort() {
-		var dont_swap_twice = [];
-		var count = 0;
+		selection_sorting = true;
 		//for loops checks each position moving counterclockwise starting at red sphere.
 		for (var x = 0; x < sphere_pos.length; x++) {
 			// spheres[x] is the sphere that should be in this position.
-			//dont_swap_twice is only necessary for now
-			if (getObjbyIndex(x) != spheres[x] && dont_swap_twice.indexOf(spheres[x]) == -1) {
-				dont_swap_twice.push(getObjbyIndex(x));
-				count++;
-				swap(getObjbyIndex(x) , spheres[x]);
-				//TODO: wait til swap is done to do next swap
+			if (getObjbyIndex(x) != spheres[x]) {
+				swap_stack.push(getObjbyIndex(x) , spheres[x]);
+				break;
 			}
 		}
-		console.log(count);
 	}
 
 	var next_time = 0;
 	var start_anim;
-	var shuffle_time_interval = .5;
+	var shuffle_time_interval = .02;
 	function animate() {
 		// swaps spheres at set time intervals
-		if (shuffle_stack.length > 0) {
+		if (swap_stack.length > 0) {
 			var time = Date.now() * 0.001;
-			while(time >= next_time && shuffle_stack.length > 0) {
-				swap(shuffle_stack.shift(), shuffle_stack.shift());
+			while(time >= next_time && swap_stack.length > 0) {
+				swap(swap_stack.shift(), swap_stack.shift());
 				next_time = time + shuffle_time_interval;
 			}
 		}
@@ -343,6 +340,8 @@
 				//if two swapping_obj's reach pi at same time, shift() will cause skipping. so need x--
 				//why doesn't this cause index out of bounds? for loop condition(x < swapping_obj.length) re-evaluates every loop.
 				x--;
+				if(selection_sorting && !sortCheck()) { selectionSort(); break; }
+				else { selection_sorting = false;}
 			}
 		}
 		start_anim = requestAnimationFrame(animate);
@@ -370,7 +369,7 @@
 
 	function stopAnim() {
 		console.log("swapping obj length: " + swapping_obj.length);
-		console.log("shuffle_stack length: " + shuffle_stack.length);
+		console.log("swap_stack length: " + swap_stack.length);
 		console.log("curcularswapdone: " + circular_swap_done);
 		cancelAnimationFrame( start_anim );
 	}
