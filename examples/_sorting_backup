@@ -308,6 +308,16 @@
 		}
 	}
 
+	function selectionSort() {
+		var dont_swap_twice = [];
+		for (var x = 0; x < spheres.length; x++) {
+			if (getOrderofObj(spheres[x]) != x && dont_swap_twice.indexOf(x) == -1) {
+				dont_swap_twice.push(getOrderofObj(spheres[x]));
+				shuffle_stack.push(spheres[x] , spheres[getOrderofObj(spheres[x] ) ] );
+			}
+		}
+	}
+
 	var next_time = 0;
 	var start_anim;
 	var shuffle_time_interval = .5;
