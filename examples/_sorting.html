@@ -32,6 +32,17 @@
 	'use strict';
 
 	var scene, camera, renderer, controls, group, container, stats;
+	var geometry = new THREE.Geometry();
+	geometry.vertices.push( new THREE.Vector3(5,0,0) );
+	geometry.vertices.push( new THREE.Vector3(0,5,0) );
+	geometry.vertices.push( new THREE.Vector3(-5,0,0) );
+	for(var x = 0; x < 200; x++) {
+		geometry.vertices.push( new THREE.Vector3(0,0,0) );
+	}
+	var line = new THREE.Line( geometry.clone(), new THREE.LineBasicMaterial( {
+		color: 0xff00ff,
+		opacity: 0.35
+		} ) );
 	function init() {
 		container = document.createElement( 'div' );
 		document.body.appendChild( container );
@@ -68,6 +79,7 @@
 
 		group = new THREE.Group();
 		scene.add( group );
+		scene.add(line);
 		initCircle(sphere_count);
 		initGUI();
 		document.addEventListener( 'mousemove', onDocumentMouseMove, false );
@@ -262,6 +274,7 @@
 	var shuffle_size = 5;
 	var swap_stack = [];
 	function shuffleSome() {
+		selection_sorting = false;
 		//var curr_time = Date.now() * 0.001;
 		if(shuffle_size * 2 > sphere_count) { console.log("shuffle size to large"); return; }
 		var elems = [];
@@ -335,6 +348,11 @@
 			motion_counter[x] += .001;
 			circular_swap_done = circularSwap( swapping_obj[x], atan1[x], atan2[x], radius[x], x_avg[x], y_avg[x], motion_counter[x] );
 			if( circular_swap_done ) {
+				for(var x = 0; x < 200; x++) {
+					line.geometry.vertices[x].x = Math.random() * 5;
+					line.geometry.vertices[x].y = Math.random() * 5;
+				}
+				line.geometry.verticesNeedUpdate = true;
 				//shift() - removes the first element in an array
 				swapping_obj.shift(); motion_counter.shift(); atan1.shift(); atan2.shift(); radius.shift(); x_avg.shift(); y_avg.shift();
 				//if two swapping_obj's reach pi at same time, shift() will cause skipping. so need x--
@@ -379,7 +397,7 @@
 
 	/* calculate entropy?
 	shuffle in timed intervals
-
+	curve, setdrawrange, line thickness, particles, sprites, put curves in own group, 
 	*/
 	</script>
 </body>
