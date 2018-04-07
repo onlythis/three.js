@@ -31,7 +31,7 @@
 	<script>
 	'use strict';
 
-	var scene, camera, renderer, controls, group, container, stats;
+	var scene, camera, renderer, controls, sphere_group, line_group, container, stats;
 	function init() {
 		container = document.createElement( 'div' );
 		document.body.appendChild( container );
@@ -66,8 +66,10 @@
 		light.shadow.camera.bottom = -100;
 		scene.add(light);
 
-		group = new THREE.Group();
-		scene.add( group );
+		sphere_group = new THREE.Group();
+		scene.add(sphere_group);
+		line_group = new THREE.Group();
+		scene.add(line_group);
 		initCircle(sphere_count);
 		initGUI();
 		document.addEventListener( 'mousemove', onDocumentMouseMove, false );
@@ -84,13 +86,13 @@
 		renderer.setSize(window.innerWidth, window.innerHeight);
 	}
 
-	var sphere_size = new THREE.SphereGeometry(.25, 16, 16);
+	var sphere_size = new THREE.SphereGeometry(.15, 16, 16);
 	function drawElem(x,y,z, hue) {
 		var mat = new THREE.MeshPhongMaterial({
 			color: new THREE.Color(),
 			flatShading: THREE.FlatShading,
 			transparent: true,
-			opacity: 1
+			opacity: .75
 		});
 		mat.color.setHSL(hue/360, 1, 0.5);
 		const obj = new THREE.Mesh(sphere_size, mat);
@@ -99,7 +101,7 @@
 		obj.position.set(x,y,z);
 		//obj.rotateY(rot);
 		//scene.children[2].add(obj);
-		group.add(obj);
+		sphere_group.add(obj);
 		return obj;
 	}
 
@@ -121,27 +123,8 @@
 			var y_pos = Math.sin(x / count * 2 * Math.PI) * 10;
 			spheres.push( drawElem( x_pos , y_pos , 0, x * 360 / count));
 			sphere_pos.push([]);
-			sphere_pos[x].push(x_pos);
-			sphere_pos[x].push(y_pos);
+			sphere_pos[x].push(precisionRound(x_pos, 5) , precisionRound(y_pos, 5));
 		}
-	}
-
-	// given obj and index to check. returns true if obj is in position of index.
-	function checkPos(obj, index) {
-		// sphere_pos[index][x(0) or y(1)]
-		if(precisionRound(obj.position.x, 5) == precisionRound(sphere_pos[index][0], 5) &&
-			 precisionRound(obj.position.y, 5) == precisionRound(sphere_pos[index][1], 5)) {
-			return true;
-		}
-		return false;
-	}
-
-	function sortCheck() {
-		var count = 0;
-		for(var x = 0; x < spheres.length; x++){
-			if(checkPos(spheres[x], x)) { count++; }
-		}
-		console.log("spheres in initial index: " + count);
 	}
 
 	var effectController = {
@@ -150,14 +133,18 @@
 		checkSorted: sortCheck,
 		shuffle: shuffleSome,
 		shuffleSize: 5,
-		shuffleTimeInterval: .5,
-		shuffleSpeed: 50,
-		sphereCount: 128
+		shuffleTimeInterval: .02,
+		velocity: 150,
+		sphereCount: 128,
+		selectionSort : selectionSort
 	};
 	function resetCircle(){
-		scene.remove(group);
-		group = new THREE.Group();
-		scene.add( group );
+		scene.remove(sphere_group);
+		sphere_group = new THREE.Group();
+		scene.add( sphere_group );
+		scene.remove(line_group);
+		line_group = new THREE.Group();
+		scene.add( line_group );
 		initCircle(sphere_count);
 	}
 	function initGUI() {
@@ -168,13 +155,17 @@
 		gui.add( effectController, "shuffle");
 		gui.add( effectController, "shuffleSize", 1, 40, 1 ).onChange( function( value ) { shuffle_size = value; } );
 		gui.add( effectController, "shuffleTimeInterval", 0, 1, .02 ).onChange( function( value ) { shuffle_time_interval = value; } );
-		gui.add( effectController, "shuffleSpeed", 1, 100, 1 ).onChange( function( value ) { swapping_speed = value; } );
+		gui.add( effectController, "velocity", 1, 300, 1 ).onChange( function( value ) { velocity = value; } );
 		gui.add( effectController, "sphereCount", 0, 128, 1 ).onChange( function( value ) {
-			scene.remove(group);
-			group = new THREE.Group();
-			scene.add( group );
+			scene.remove(sphere_group);
+			sphere_group = new THREE.Group();
+			scene.add( sphere_group );
+			scene.remove(line_group);
+			line_group = new THREE.Group();
+			scene.add( line_group );
 			initCircle(value);
 		});
+		gui.add( effectController, "selectionSort");
 	}
 
 	var mouse = new THREE.Vector2();
@@ -229,7 +220,7 @@
 
 	var motion_counter = [];
 	var swapping_obj = [];
-	var swapping_speed = 50;
+	var velocity = 150;
 	var atan1 = [], atan2 = [], radius = [], x_avg = [], y_avg = [];
 	var pi = Math.PI;
 
@@ -277,8 +268,9 @@
 	//how is it able to have same obj in two swaps simultaneously?  1 obj is assigned to mutliple elements in swapping_obj array.
 
 	var shuffle_size = 5;
-	var shuffle_stack = [];
+	var swap_stack = [];
 	function shuffleSome() {
+		selection_sorting = false;
 		//var curr_time = Date.now() * 0.001;
 		if(shuffle_size * 2 > sphere_count) { console.log("shuffle size to large"); return; }
 		var elems = [];
@@ -294,39 +286,67 @@
 				second_rand = Math.round(Math.random() * (sphere_count - 1));
 			}
 			elems.push(second_rand);
-			shuffle_stack.push( spheres[first_rand]);
-			shuffle_stack.push(spheres[second_rand]);
+			swap_stack.push( spheres[first_rand], spheres[second_rand]);
 		}
 	}
 
-	function circularSwap(counter, obj, atan, radius, x_avg, y_avg){
-		obj.position.x = Math.cos(atan + counter * swapping_speed) * radius + x_avg;
-		obj.position.y = Math.sin(atan + counter * swapping_speed) * radius + y_avg;
-		if( counter * swapping_speed >= pi ) {
-			obj.position.x = Math.cos(atan + pi) * radius + x_avg;
-			obj.position.y = Math.sin(atan + pi) * radius + y_avg;
+	function sortCheck() {
+		var count = 0;
+		for(var x = 0; x < spheres.length; x++){
+			if(getObjbyIndex(x) == spheres[x]) { count++; }
+		}
+		console.log("spheres in initial index: " + count);
+	}
+
+	function sortCheck2() {
+		var count = 0;
+		for(var x = 0; x < spheres.length; x++){
+			if(getObjbyIndex(x) == spheres[x]) { count++; }
+		}
+		return sphere_count == count;
+	}
+
+	// returns the obj that is currently at index. Red sphere is index 0 and increases counterclockwise.
+	function getObjbyIndex(index) {
+		//console.log(precisionRound(spheres[index].position.x, 5) , sphere_pos[index][0] ,
+		// 						precisionRound(spheres[index].position.y, 5) , sphere_pos[index][1]);
+		for( var x = 0; x < sphere_pos.length; x++) {
+			if(precisionRound(spheres[x].position.x, 5) == sphere_pos[index][0] &&
+			 	 precisionRound(spheres[x].position.y, 5) == sphere_pos[index][1]) {
+				return spheres[x];
+			}
 		}
 	}
 
+	var selection_sorting = false;
 	function selectionSort() {
-		var dont_swap_twice = [];
-		for (var x = 0; x < spheres.length; x++) {
-			if (getOrderofObj(spheres[x]) != x && dont_swap_twice.indexOf(x) == -1) {
-				dont_swap_twice.push(getOrderofObj(spheres[x]));
-				shuffle_stack.push(spheres[x] , spheres[getOrderofObj(spheres[x] ) ] );
+		selection_sorting = true;
+		scene.remove(line_group);
+		line_group = new THREE.Group();
+		scene.add( line_group );
+		selectionSortNext();
+	}
+
+	function selectionSortNext() {
+		//for loops checks each position moving counterclockwise starting at red sphere.
+		for (var x = 0; x < sphere_pos.length; x++) {
+			// spheres[x] is the sphere that should be in this position.
+			if (getObjbyIndex(x) != spheres[x]) {
+				swap_stack.push(getObjbyIndex(x) , spheres[x]);
+				break;
 			}
 		}
 	}
 
 	var next_time = 0;
 	var start_anim;
-	var shuffle_time_interval = .5;
+	var shuffle_time_interval = .02;
 	function animate() {
 		// swaps spheres at set time intervals
-		if (shuffle_stack.length > 0) {
+		if (swap_stack.length > 0) {
 			var time = Date.now() * 0.001;
-			while(time >= next_time && shuffle_stack.length > 0) {
-				swap(shuffle_stack.shift(), shuffle_stack.shift());
+			while(time >= next_time && swap_stack.length > 0) {
+				swap(swap_stack.shift(), swap_stack.shift());
 				next_time = time + shuffle_time_interval;
 			}
 		}
@@ -335,22 +355,15 @@
 		for(var x = 0; x < swapping_obj.length; x++) {
 			//obj starts moving from its current position.
 			motion_counter[x] += .001;
-			swapping_obj[x][0].position.x = Math.cos(atan1[x] + motion_counter[x] * swapping_speed) * radius[x] + x_avg[x];
-			swapping_obj[x][0].position.y = Math.sin(atan1[x] + motion_counter[x] * swapping_speed) * radius[x] + y_avg[x];
-			swapping_obj[x][1].position.x = Math.cos(atan2[x] + motion_counter[x] * swapping_speed) * radius[x] + x_avg[x];
-			swapping_obj[x][1].position.y = Math.sin(atan2[x] + motion_counter[x] * swapping_speed) * radius[x] + y_avg[x];
-			//motion_counter * swapping_speed will equal pi when each obj in a pair has rotated exactly 180 degrees
-			if( motion_counter[x] * swapping_speed >= pi ) {
-				swapping_obj[x][0].position.x = Math.cos(atan1[x] + pi) * radius[x] + x_avg[x];
-				swapping_obj[x][0].position.y = Math.sin(atan1[x] + pi) * radius[x] + y_avg[x];
-				swapping_obj[x][1].position.x = Math.cos(atan2[x] + pi) * radius[x] + x_avg[x];
-				swapping_obj[x][1].position.y = Math.sin(atan2[x] + pi) * radius[x] + y_avg[x];
-				//console.log(swapping_obj[x][0].position.x, swapping_obj[x][0].position.y, swapping_obj[x][1].position.x, swapping_obj[x][1].position.y)
+			circular_swap_done = circularSwap( swapping_obj[x], atan1[x], atan2[x], radius[x], x_avg[x], y_avg[x], motion_counter[x] );
+			if( circular_swap_done ) {
 				//shift() - removes the first element in an array
 				swapping_obj.shift(); motion_counter.shift(); atan1.shift(); atan2.shift(); radius.shift(); x_avg.shift(); y_avg.shift();
 				//if two swapping_obj's reach pi at same time, shift() will cause skipping. so need x--
 				//why doesn't this cause index out of bounds? for loop condition(x < swapping_obj.length) re-evaluates every loop.
 				x--;
+				if(selection_sorting && !sortCheck2()) { selectionSortNext(); }
+				else { selection_sorting = false;}
 			}
 		}
 		start_anim = requestAnimationFrame(animate);
@@ -358,7 +371,45 @@
 		renderer.render(scene, camera);
 	}
 
+	function drawLine(obj1, obj2) {
+		var geometry = new THREE.BufferGeometry();
+		var material = new THREE.LineBasicMaterial( { vertexColors: THREE.VertexColors } );
+		var positions = [];
+		var colors = [];
+		positions.push(obj1.position.x, obj1.position.y, 0);
+		positions.push(obj2.position.x, obj2.position.y, 0);
+		colors.push(obj1.material.color.r, obj1.material.color.g, obj1.material.color.b);
+		colors.push(obj2.material.color.r, obj2.material.color.g, obj2.material.color.b);
+		geometry.addAttribute( 'position', new THREE.Float32BufferAttribute( positions, 3 ) );
+		geometry.addAttribute( 'color', new THREE.Float32BufferAttribute( colors, 3 ) );
+		geometry.computeBoundingSphere();
+		var line = new THREE.Line( geometry, material );
+		line_group.add(line);
+	}
+
+	var circular_swap_done = false;
+	function circularSwap( obj, atan1, atan2, radius, x_avg, y_avg, counter){
+		obj[0].position.x = Math.cos(atan1 + counter * velocity) * radius + x_avg;
+		obj[0].position.y = Math.sin(atan1 + counter * velocity) * radius + y_avg;
+		obj[1].position.x = Math.cos(atan2 + counter * velocity) * radius + x_avg;
+		obj[1].position.y = Math.sin(atan2 + counter * velocity) * radius + y_avg;
+
+		//motion_counter * velocity will equal pi when each obj in a pair has rotated exactly 180 degrees
+		if( counter * velocity >= pi ) {
+			obj[0].position.x = Math.cos(atan1 + pi) * radius + x_avg;
+			obj[0].position.y = Math.sin(atan1 + pi) * radius + y_avg;
+			obj[1].position.x = Math.cos(atan2 + pi) * radius + x_avg;
+			obj[1].position.y = Math.sin(atan2 + pi) * radius + y_avg;
+			drawLine(obj[0], obj[1]);
+			return true;
+		}
+		return false;
+	}
+
 	function stopAnim() {
+		console.log("swapping obj length: " + swapping_obj.length);
+		console.log("swap_stack length: " + swap_stack.length);
+		console.log("curcularswapdone: " + circular_swap_done);
 		cancelAnimationFrame( start_anim );
 	}
 
@@ -367,7 +418,7 @@
 
 	/* calculate entropy?
 	shuffle in timed intervals
-
+	curve, setdrawrange, line thickness, particles, sprites, put curves in own group,
 	*/
 	</script>
 </body>
