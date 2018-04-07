@@ -87,7 +87,7 @@
 	}
 
 	var sphere_size = new THREE.SphereGeometry(.15, 16, 16);
-	function drawElem(x,y,z, hue) {
+	function drawSphere(x,y,z, hue) {
 		var mat = new THREE.MeshPhongMaterial({
 			color: new THREE.Color(),
 			flatShading: THREE.FlatShading,
@@ -103,6 +103,23 @@
 		//scene.children[2].add(obj);
 		sphere_group.add(obj);
 		return obj;
+	}
+
+	// draws line between two spheres. gradient color change from sphere1's color to sphere2's color
+	function drawLine(obj1, obj2) {
+		var geometry = new THREE.BufferGeometry();
+		var material = new THREE.LineBasicMaterial( { vertexColors: THREE.VertexColors } );
+		var positions = [];
+		var colors = [];
+		positions.push(obj1.position.x, obj1.position.y, 0);
+		positions.push(obj2.position.x, obj2.position.y, 0);
+		colors.push(obj1.material.color.r, obj1.material.color.g, obj1.material.color.b);
+		colors.push(obj2.material.color.r, obj2.material.color.g, obj2.material.color.b);
+		geometry.addAttribute( 'position', new THREE.Float32BufferAttribute( positions, 3 ) );
+		geometry.addAttribute( 'color', new THREE.Float32BufferAttribute( colors, 3 ) );
+		geometry.computeBoundingSphere();
+		var line = new THREE.Line( geometry, material );
+		line_group.add(line);
 	}
 
 	function precisionRound(number, precision) {
@@ -121,17 +138,24 @@
 		for(var x = 0; x < count; x++) {
 			var x_pos = Math.cos(x / count * 2 * Math.PI) * 10;
 			var y_pos = Math.sin(x / count * 2 * Math.PI) * 10;
-			spheres.push( drawElem( x_pos , y_pos , 0, x * 360 / count));
+			spheres.push( drawSphere( x_pos , y_pos , 0, x * 360 / count));
 			sphere_pos.push([]);
 			sphere_pos[x].push(precisionRound(x_pos, 5) , precisionRound(y_pos, 5));
 		}
 	}
 
+	function hideCircle() {
+		for(var x = 0; x < sphere_group.children.length; x++) {
+			sphere_group.children[x].visible = !sphere_group.children[x].visible;
+		}
+	}
+
 	var effectController = {
 		reset: resetCircle,
+		hideSpheres: hideCircle,
 		stop: stopAnim,
 		checkSorted: sortCheck,
-		shuffle: shuffleSome,
+		selectionShuffle: selectionShuffle,
 		shuffleSize: 5,
 		shuffleTimeInterval: .02,
 		velocity: 150,
@@ -150,9 +174,10 @@
 	function initGUI() {
 		var gui = new dat.GUI();
 		gui.add( effectController, "reset" );
+		gui.add( effectController, "hideSpheres" );
 		gui.add( effectController, "stop" );
 		gui.add( effectController, "checkSorted");
-		gui.add( effectController, "shuffle");
+		gui.add( effectController, "selectionShuffle");
 		gui.add( effectController, "shuffleSize", 1, 40, 1 ).onChange( function( value ) { shuffle_size = value; } );
 		gui.add( effectController, "shuffleTimeInterval", 0, 1, .02 ).onChange( function( value ) { shuffle_time_interval = value; } );
 		gui.add( effectController, "velocity", 1, 300, 1 ).onChange( function( value ) { velocity = value; } );
@@ -186,13 +211,14 @@
 				if(intersected && intersected != selected){
 					intersected.material.emissive.setHex( 0x000000 );
 				}
+				//where mouse currently is equals intersected and emits almost white color
 				intersected = intersects[ 0 ].object;
 				intersected.material.emissive.setHex( 0xaaaaaa );
 			}
 
 		} else {
 			//if mouse just moved off a sphere
-			//intersected gets reassigned to selected because the mouse moved in the same obj
+			//intersected gets assigned to null because the mouse doesn't intersect any spheres
 			if ( intersected && intersected != selected) {
 				intersected.material.emissive.setHex( 0x000000 );
 			}
@@ -215,7 +241,6 @@
 				selected.material.emissive.setHex( 0xaaaaaa );
 			}
 		}
-		//console.log(selected);
 	}
 
 	var motion_counter = [];
@@ -226,14 +251,14 @@
 
 	// glitches when swapping an obj that is already moving. glitch happens when the swap before finishes moving.
 	// looks like they briefly swap positions(only visible sometimes). Works out in the end though.
+	// because the same sphere is assigned to two swap functions.
 
 	function swap(obj1, obj2) {
-		//console.log(obj1.position.x, obj1.position.y, obj2.position.x, obj2.position.y);
-		//find middle of obj1, obj2
+		//find middle point/coordinates of obj1, obj2
 		x_avg.push((obj1.position.x + obj2.position.x) / 2);
 		y_avg.push((obj1.position.y + obj2.position.y) / 2);
 
-		//unemissive and reassign selected and intersected
+		//unemissive and nullify selected and intersected
 		if(selected){
 			selected.material.emissive.setHex( 0x000000 );
 			selected = null;
@@ -243,13 +268,14 @@
 			intersected = null;
 		}
 
-		// swapping_obj is 2d array. pairs of swapping objs.
+		// swapping_obj is public and used in function animate() to move spheres.
 		swapping_obj.push([]);
 		swapping_obj[swapping_obj.length - 1].push(obj1);
 		swapping_obj[swapping_obj.length - 1].push(obj2);
 
 		//finding radians(position on circle created by the two objs and their center) of objs with regards to the avg_pos(middle)
 		//swap_obj is avg pos of the pair of swapping objs
+		// there has to be a cleaner way to write this. the center of the objs is calculated twice.
 		var swap_obj1x, swap_obj1y, swap_obj2x, swap_obj2y;
 		swap_obj1x = obj1.position.x - x_avg[x_avg.length - 1];
 		swap_obj1y = obj1.position.y - y_avg[y_avg.length - 1];
@@ -269,9 +295,10 @@
 
 	var shuffle_size = 5;
 	var swap_stack = [];
-	function shuffleSome() {
+	// calls swap function(eventually) with no sphere being used twice. number of swap calls depends on user input(shuffle_size)
+	function selectionShuffle() {
+		// selection_sorting = false just so selectionShuffle can be called during sorting(kinda).
 		selection_sorting = false;
-		//var curr_time = Date.now() * 0.001;
 		if(shuffle_size * 2 > sphere_count) { console.log("shuffle size to large"); return; }
 		var elems = [];
 		for(var x=0; x<shuffle_size; x++){
@@ -290,6 +317,18 @@
 		}
 	}
 
+	//insertion shuffle, picks two random spheres, moves last to beginning, slides all spheres inbetween one position counterclockwise
+	function insertionShuffle() {
+		var first_rand = Math.round(Math.random() * (sphere_count - 1));
+		var second_rand = Math.round(Math.random() * (sphere_count - 1));
+		// first and second rand will not be the same.
+		while(first_rand == second_rand) {
+			second_rand = Math.round(Math.random() * (sphere_count - 1));
+		}
+
+	}
+
+	// provides output for user
 	function sortCheck() {
 		var count = 0;
 		for(var x = 0; x < spheres.length; x++){
@@ -297,7 +336,7 @@
 		}
 		console.log("spheres in initial index: " + count);
 	}
-
+	// no output because it is called alot.
 	function sortCheck2() {
 		var count = 0;
 		for(var x = 0; x < spheres.length; x++){
@@ -308,8 +347,6 @@
 
 	// returns the obj that is currently at index. Red sphere is index 0 and increases counterclockwise.
 	function getObjbyIndex(index) {
-		//console.log(precisionRound(spheres[index].position.x, 5) , sphere_pos[index][0] ,
-		// 						precisionRound(spheres[index].position.y, 5) , sphere_pos[index][1]);
 		for( var x = 0; x < sphere_pos.length; x++) {
 			if(precisionRound(spheres[x].position.x, 5) == sphere_pos[index][0] &&
 			 	 precisionRound(spheres[x].position.y, 5) == sphere_pos[index][1]) {
@@ -319,6 +356,7 @@
 	}
 
 	var selection_sorting = false;
+	// called once to remove lines, and start selection sorting.
 	function selectionSort() {
 		selection_sorting = true;
 		scene.remove(line_group);
@@ -327,12 +365,14 @@
 		selectionSortNext();
 	}
 
+	// will continue until spheres are sorted.
 	function selectionSortNext() {
 		//for loops checks each position moving counterclockwise starting at red sphere.
 		for (var x = 0; x < sphere_pos.length; x++) {
 			// spheres[x] is the sphere that should be in this position.
 			if (getObjbyIndex(x) != spheres[x]) {
 				swap_stack.push(getObjbyIndex(x) , spheres[x]);
+				// can't swap again until current swap finishes. One sphere can be swapped twice in a row, needs time to swap.
 				break;
 			}
 		}
@@ -353,7 +393,6 @@
 
 		// for each obj currently moving. turn this into function.
 		for(var x = 0; x < swapping_obj.length; x++) {
-			//obj starts moving from its current position.
 			motion_counter[x] += .001;
 			circular_swap_done = circularSwap( swapping_obj[x], atan1[x], atan2[x], radius[x], x_avg[x], y_avg[x], motion_counter[x] );
 			if( circular_swap_done ) {
@@ -362,6 +401,7 @@
 				//if two swapping_obj's reach pi at same time, shift() will cause skipping. so need x--
 				//why doesn't this cause index out of bounds? for loop condition(x < swapping_obj.length) re-evaluates every loop.
 				x--;
+				//if selection sort was called and it is still not completely sorted, selectionsortnext.
 				if(selection_sorting && !sortCheck2()) { selectionSortNext(); }
 				else { selection_sorting = false;}
 			}
@@ -371,30 +411,15 @@
 		renderer.render(scene, camera);
 	}
 
-	function drawLine(obj1, obj2) {
-		var geometry = new THREE.BufferGeometry();
-		var material = new THREE.LineBasicMaterial( { vertexColors: THREE.VertexColors } );
-		var positions = [];
-		var colors = [];
-		positions.push(obj1.position.x, obj1.position.y, 0);
-		positions.push(obj2.position.x, obj2.position.y, 0);
-		colors.push(obj1.material.color.r, obj1.material.color.g, obj1.material.color.b);
-		colors.push(obj2.material.color.r, obj2.material.color.g, obj2.material.color.b);
-		geometry.addAttribute( 'position', new THREE.Float32BufferAttribute( positions, 3 ) );
-		geometry.addAttribute( 'color', new THREE.Float32BufferAttribute( colors, 3 ) );
-		geometry.computeBoundingSphere();
-		var line = new THREE.Line( geometry, material );
-		line_group.add(line);
-	}
-
 	var circular_swap_done = false;
 	function circularSwap( obj, atan1, atan2, radius, x_avg, y_avg, counter){
+		//obj starts moving from its current position.
 		obj[0].position.x = Math.cos(atan1 + counter * velocity) * radius + x_avg;
 		obj[0].position.y = Math.sin(atan1 + counter * velocity) * radius + y_avg;
 		obj[1].position.x = Math.cos(atan2 + counter * velocity) * radius + x_avg;
 		obj[1].position.y = Math.sin(atan2 + counter * velocity) * radius + y_avg;
-
 		//motion_counter * velocity will equal pi when each obj in a pair has rotated exactly 180 degrees
+		// need to set position with atan + pi because otherwise will be inaccurate.
 		if( counter * velocity >= pi ) {
 			obj[0].position.x = Math.cos(atan1 + pi) * radius + x_avg;
 			obj[0].position.y = Math.sin(atan1 + pi) * radius + y_avg;
@@ -419,6 +444,8 @@
 	/* calculate entropy?
 	shuffle in timed intervals
 	curve, setdrawrange, line thickness, particles, sprites, put curves in own group,
+	add comments, more comments, everything comments
+	insertion sort
 	*/
 	</script>
 </body>
