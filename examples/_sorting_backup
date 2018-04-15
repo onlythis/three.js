@@ -37,10 +37,11 @@
 		document.body.appendChild( container );
 		scene = new THREE.Scene();
 		camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.3, 1000);
-		camera.position.z = 30;
+		camera.position.z = 27.5;
 		camera.position.y = 0;
 		camera.position.x = 0;
-		camera.lookAt(scene.position);
+		scene.position.x = -4;
+		//camera.lookAt(new THREE.Vector3(-8, 8, 0));
 
 		renderer = new THREE.WebGLRenderer();
 		renderer.setPixelRatio(window.devicePixelRatio);
@@ -86,19 +87,22 @@
 		renderer.setSize(window.innerWidth, window.innerHeight);
 	}
 
-	var sphere_size = new THREE.SphereGeometry(.15, 16, 16);
-	function drawSphere(x,y,z, hue) {
+	var sphere_size = new THREE.SphereGeometry(.2, 16, 16);
+	function drawSphere(x,y,z, hue, visibility) {
 		var mat = new THREE.MeshPhongMaterial({
 			color: new THREE.Color(),
 			flatShading: THREE.FlatShading,
 			transparent: true,
-			opacity: .75
+			opacity: .85
 		});
 		mat.color.setHSL(hue/360, 1, 0.5);
 		const obj = new THREE.Mesh(sphere_size, mat);
 		obj.castShadow = true;
 		obj.receiveShadow = true;
 		obj.position.set(x,y,z);
+		if(!visibility) {
+			obj.visible = false;
+		}
 		//obj.rotateY(rot);
 		//scene.children[2].add(obj);
 		sphere_group.add(obj);
@@ -123,6 +127,7 @@
 	}
 
 	function precisionRound(number, precision) {
+		// remember to pass in second variable
 		var factor = Math.pow(10, precision);
 		return Math.round(number * factor) / factor;
 	}
@@ -138,14 +143,14 @@
 		for(var x = 0; x < count; x++) {
 			var x_pos = Math.cos(x / count * 2 * Math.PI) * 10;
 			var y_pos = Math.sin(x / count * 2 * Math.PI) * 10;
-			spheres.push( drawSphere( x_pos , y_pos , 0, x * 360 / count));
+			spheres.push( drawSphere( x_pos , y_pos , 0, x * 360 / count, true));
 			sphere_pos.push([]);
 			sphere_pos[x].push(precisionRound(x_pos, 5) , precisionRound(y_pos, 5));
 		}
 	}
 
 	function hideCircle() {
-		for(var x = 0; x < sphere_group.children.length; x++) {
+		for(var x = 0; x < sphere_count; x++) {
 			sphere_group.children[x].visible = !sphere_group.children[x].visible;
 		}
 	}
@@ -156,11 +161,13 @@
 		stop: stopAnim,
 		checkSorted: sortCheck,
 		selectionShuffle: selectionShuffle,
-		shuffleSize: 5,
-		shuffleTimeInterval: .02,
-		velocity: 150,
+		insertionShuffle : insertionShuffle,
+		shuffleSize: 35,
+		shuffleTimeInterval: .00,
+		velocity: 300,
 		sphereCount: 128,
-		selectionSort : selectionSort
+		selectionSort : selectionSort,
+		insertionSort : insertionSortNext
 	};
 	function resetCircle(){
 		scene.remove(sphere_group);
@@ -178,9 +185,10 @@
 		gui.add( effectController, "stop" );
 		gui.add( effectController, "checkSorted");
 		gui.add( effectController, "selectionShuffle");
+		gui.add( effectController, "insertionShuffle");
 		gui.add( effectController, "shuffleSize", 1, 40, 1 ).onChange( function( value ) { shuffle_size = value; } );
 		gui.add( effectController, "shuffleTimeInterval", 0, 1, .02 ).onChange( function( value ) { shuffle_time_interval = value; } );
-		gui.add( effectController, "velocity", 1, 300, 1 ).onChange( function( value ) { velocity = value; } );
+		gui.add( effectController, "velocity", 1, 500, 1 ).onChange( function( value ) { velocity = value; } );
 		gui.add( effectController, "sphereCount", 0, 128, 1 ).onChange( function( value ) {
 			scene.remove(sphere_group);
 			sphere_group = new THREE.Group();
@@ -191,6 +199,7 @@
 			initCircle(value);
 		});
 		gui.add( effectController, "selectionSort");
+		gui.add( effectController, "insertionSort");
 	}
 
 	var mouse = new THREE.Vector2();
@@ -200,9 +209,9 @@
 		event.preventDefault();
 		mouse.set( ( event.clientX / window.innerWidth ) * 2 - 1, - ( event.clientY / window.innerHeight ) * 2 + 1 );
 		raycaster.setFromCamera( mouse, camera );
-		//scene.children[2].children = spheres
+		//scene.children[2].children = spheres_group.children
 		//highlights spheres white while mouse is over them ( change to emissive )
-		var intersects = raycaster.intersectObjects( scene.children[2].children );
+		var intersects = raycaster.intersectObjects( sphere_group.children );
 		//if mouse intersects a sphere
 		if ( intersects.length > 0 ) {
 			//if mouse is still over same object skip
@@ -244,14 +253,50 @@
 	}
 
 	var motion_counter = [];
-	var swapping_obj = [];
-	var velocity = 150;
+	var swapping_objs = [];
+	var velocity = 300;
 	var atan1 = [], atan2 = [], radius = [], x_avg = [], y_avg = [];
 	var pi = Math.PI;
 
 	// glitches when swapping an obj that is already moving. glitch happens when the swap before finishes moving.
 	// looks like they briefly swap positions(only visible sometimes). Works out in the end though.
 	// because the same sphere is assigned to two swap functions.
+
+	// provides output for user
+	function sortCheck() {
+		var count = 0;
+		for(var x = 0; x < sphere_count; x++){
+			if(getObjbyIndex(x) == spheres[x]) { count++; }
+		}
+		console.log("spheres in initial index: " + count);
+	}
+	// no output because it is called alot.
+	function sortCheck2() {
+		var count = 0;
+		for(var x = 0; x < sphere_count; x++){
+			if(getObjbyIndex(x) == spheres[x]) { count++; }
+		}
+		return sphere_count == count;
+	}
+
+	// returns the obj that is currently at index. Red sphere is index 0 and increases counterclockwise.
+	function getObjbyIndex(index) {
+		for( var x = 0; x < sphere_count; x++) {
+			if(precisionRound(spheres[x].position.x, 5) == sphere_pos[index][0] &&
+			precisionRound(spheres[x].position.y, 5) == sphere_pos[index][1]) {
+				return spheres[x];
+			}
+		}
+	}
+
+	function getIndexbyObj(obj) {
+		for( var x = 0; x < sphere_count; x++) {
+			if(precisionRound(obj.position.x, 5) == sphere_pos[x][0] &&
+			precisionRound(obj.position.y, 5) == sphere_pos[x][1]) {
+				return x;
+			}
+		}
+	}
 
 	function swap(obj1, obj2) {
 		//find middle point/coordinates of obj1, obj2
@@ -268,10 +313,10 @@
 			intersected = null;
 		}
 
-		// swapping_obj is public and used in function animate() to move spheres.
-		swapping_obj.push([]);
-		swapping_obj[swapping_obj.length - 1].push(obj1);
-		swapping_obj[swapping_obj.length - 1].push(obj2);
+		// swapping_objs is public and used in function animate() to move spheres.
+		swapping_objs.push([]);
+		swapping_objs[swapping_objs.length - 1].push(obj1);
+		swapping_objs[swapping_objs.length - 1].push(obj2);
 
 		//finding radians(position on circle created by the two objs and their center) of objs with regards to the avg_pos(middle)
 		//swap_obj is avg pos of the pair of swapping objs
@@ -291,9 +336,9 @@
 		motion_counter.push(0);
 	}
 
-	//how is it able to have same obj in two swaps simultaneously?  1 obj is assigned to mutliple elements in swapping_obj array.
+	//how is it able to have same obj in two swaps simultaneously?  1 obj is assigned to mutliple elements in swapping_objs array.
 
-	var shuffle_size = 5;
+	var shuffle_size = 35;
 	var swap_stack = [];
 	// calls swap function(eventually) with no sphere being used twice. number of swap calls depends on user input(shuffle_size)
 	function selectionShuffle() {
@@ -317,44 +362,6 @@
 		}
 	}
 
-	//insertion shuffle, picks two random spheres, moves last to beginning, slides all spheres inbetween one position counterclockwise
-	function insertionShuffle() {
-		var first_rand = Math.round(Math.random() * (sphere_count - 1));
-		var second_rand = Math.round(Math.random() * (sphere_count - 1));
-		// first and second rand will not be the same.
-		while(first_rand == second_rand) {
-			second_rand = Math.round(Math.random() * (sphere_count - 1));
-		}
-
-	}
-
-	// provides output for user
-	function sortCheck() {
-		var count = 0;
-		for(var x = 0; x < spheres.length; x++){
-			if(getObjbyIndex(x) == spheres[x]) { count++; }
-		}
-		console.log("spheres in initial index: " + count);
-	}
-	// no output because it is called alot.
-	function sortCheck2() {
-		var count = 0;
-		for(var x = 0; x < spheres.length; x++){
-			if(getObjbyIndex(x) == spheres[x]) { count++; }
-		}
-		return sphere_count == count;
-	}
-
-	// returns the obj that is currently at index. Red sphere is index 0 and increases counterclockwise.
-	function getObjbyIndex(index) {
-		for( var x = 0; x < sphere_pos.length; x++) {
-			if(precisionRound(spheres[x].position.x, 5) == sphere_pos[index][0] &&
-			 	 precisionRound(spheres[x].position.y, 5) == sphere_pos[index][1]) {
-				return spheres[x];
-			}
-		}
-	}
-
 	var selection_sorting = false;
 	// called once to remove lines, and start selection sorting.
 	function selectionSort() {
@@ -368,7 +375,7 @@
 	// will continue until spheres are sorted.
 	function selectionSortNext() {
 		//for loops checks each position moving counterclockwise starting at red sphere.
-		for (var x = 0; x < sphere_pos.length; x++) {
+		for (var x = 0; x < sphere_count; x++) {
 			// spheres[x] is the sphere that should be in this position.
 			if (getObjbyIndex(x) != spheres[x]) {
 				swap_stack.push(getObjbyIndex(x) , spheres[x]);
@@ -378,9 +385,74 @@
 		}
 	}
 
+	//insertion shuffle, picks two random spheres, moves last to beginning, slides all spheres inbetween one position counterclockwise
+	var sliding = false;
+	var sliding_counter, insertion_spheres, insertion_atans;
+	var insertion_shuffling = false;
+	function insertionShuffle() {
+		insertion_shuffling = true;
+		insertion_spheres = [];
+		insertion_atans = [];
+		sliding = true;
+		sliding_counter = 0;
+		var first_rand = Math.round(Math.random() * (sphere_count - 1));
+		var second_rand = Math.round(Math.random() * (sphere_count - 1));
+		// first and second rand will not be the same.
+		while(first_rand == second_rand) {
+			second_rand = Math.round(Math.random() * (sphere_count - 1));
+		}
+		if(first_rand > second_rand) {
+			var temp = second_rand;
+			second_rand = first_rand;
+			first_rand = temp;
+		}
+
+		for(var x = first_rand; x < second_rand; x++){
+			var curr = getObjbyIndex(x);
+			insertion_spheres.push(curr);
+			insertion_atans.push(Math.atan2(curr.position.y, curr.position.x));
+		}
+		var invis_sphere = getObjbyIndex(first_rand);
+		var color = invis_sphere.material.color.getHSL().h * 360;
+		swap_stack.push(getObjbyIndex(second_rand),
+		drawSphere(invis_sphere.position.x, invis_sphere.position.y, 0, color, false));
+		// invis spheres are added to group but never checked in sortCheck or anything, for loops use sphere_count.
+		// invis spheres wont be intersected by raycaster. mesh and material both have visible properties.
+	}
+
+	function insertionSort(start_pos, end_pos) {
+		insertion_spheres = [];
+		insertion_atans = [];
+		sliding = true;
+		sliding_counter = 0;
+		for(var x = start_pos; x < end_pos; x++){
+			var curr = getObjbyIndex(x);
+			insertion_spheres.push(curr);
+			insertion_atans.push(Math.atan2(curr.position.y, curr.position.x));
+		}
+		var invis_sphere = getObjbyIndex(start_pos);
+		var color = invis_sphere.material.color.getHSL().h * 360;
+		swap_stack.push(getObjbyIndex(end_pos),
+		drawSphere(invis_sphere.position.x, invis_sphere.position.y, 0, color, false));
+	}
+
+	// will continue until spheres are sorted.
+	function insertionSortNext() {
+		insertion_shuffling = false;
+		//for loops checks each position moving counterclockwise starting at red sphere.
+		for (var x = 0; x < sphere_count; x++) {
+			// spheres[x] is the sphere that should be in this position.
+			if (getObjbyIndex(x) != spheres[x]) {
+				insertionSort(x , getIndexbyObj(spheres[x]));
+				// can't swap again until current swap finishes. One sphere can be swapped twice in a row, needs time to swap.
+				break;
+			}
+		}
+	}
+
 	var next_time = 0;
 	var start_anim;
-	var shuffle_time_interval = .02;
+	var shuffle_time_interval = .00;
 	function animate() {
 		// swaps spheres at set time intervals
 		if (swap_stack.length > 0) {
@@ -392,49 +464,85 @@
 		}
 
 		// for each obj currently moving. turn this into function.
-		for(var x = 0; x < swapping_obj.length; x++) {
-			motion_counter[x] += .001;
-			circular_swap_done = circularSwap( swapping_obj[x], atan1[x], atan2[x], radius[x], x_avg[x], y_avg[x], motion_counter[x] );
+		for(var x = 0; x < swapping_objs.length; x++) {
+			motion_counter[x] += .001 * velocity;
+			circular_swap_done = circularSwap( swapping_objs[x], atan1[x], atan2[x], radius[x], x_avg[x], y_avg[x], motion_counter[x] );
 			if( circular_swap_done ) {
 				//shift() - removes the first element in an array
-				swapping_obj.shift(); motion_counter.shift(); atan1.shift(); atan2.shift(); radius.shift(); x_avg.shift(); y_avg.shift();
-				//if two swapping_obj's reach pi at same time, shift() will cause skipping. so need x--
-				//why doesn't this cause index out of bounds? for loop condition(x < swapping_obj.length) re-evaluates every loop.
+				swapping_objs.shift(); motion_counter.shift(); atan1.shift(); atan2.shift(); radius.shift(); x_avg.shift(); y_avg.shift();
+				//if two swapping_objs's reach pi at same time, shift() will cause skipping. so need x--
+				//why doesn't this cause index out of bounds? for loop condition(x < swapping_objs.length) re-evaluates every loop.
 				x--;
 				//if selection sort was called and it is still not completely sorted, selectionsortnext.
 				if(selection_sorting && !sortCheck2()) { selectionSortNext(); }
 				else { selection_sorting = false;}
 			}
 		}
+
+		if(sliding) {
+			var slide_counter_interval = (2 * pi / sphere_count) / (pi / (velocity * .001));
+			sliding_counter += slide_counter_interval;
+			if(!slideGroup(sliding_counter)) {
+				if(!sortCheck2() && !insertion_shuffling) {
+					// slide is done but swap isnt
+					insertionSortNext();
+				} else {
+					sliding = false;
+				}
+			}
+		}
+
 		start_anim = requestAnimationFrame(animate);
 		stats.update();
 		renderer.render(scene, camera);
 	}
 
+	// slides group of spheres over 1 position. returns false when done
+	function slideGroup(counter) {
+		for(var x = 0; x < insertion_spheres.length; x++){
+			var curr = insertion_spheres[x];
+			curr.position.x = Math.cos(insertion_atans[x] + counter) * 10;
+			curr.position.y = Math.sin(insertion_atans[x] + counter) * 10;
+		}
+		// 2 * pi / sphere_count = radians in between two spheres
+		if(counter >= 2 * pi / sphere_count ) {
+			for(var x = 0; x < insertion_spheres.length; x++){
+				var curr = insertion_spheres[x];
+				curr.position.x = Math.cos(insertion_atans[x] + 2 * pi / sphere_count) * 10;
+				curr.position.y = Math.sin(insertion_atans[x] + 2 * pi / sphere_count) * 10;
+			}
+			return false;
+		}
+		else { return true; }
+	}
+
+	// velocity / pi = counter when 180 degree swap.
+	// 2 * pi / sphere_count = counter when slide done.
+	// total movement(2pi / sphere_count) / how many frames it will take for swap to finish
+	var slide_counter_interval = (2 * pi / sphere_count) / (pi / (velocity * .001));
+
 	var circular_swap_done = false;
 	function circularSwap( obj, atan1, atan2, radius, x_avg, y_avg, counter){
 		//obj starts moving from its current position.
-		obj[0].position.x = Math.cos(atan1 + counter * velocity) * radius + x_avg;
-		obj[0].position.y = Math.sin(atan1 + counter * velocity) * radius + y_avg;
-		obj[1].position.x = Math.cos(atan2 + counter * velocity) * radius + x_avg;
-		obj[1].position.y = Math.sin(atan2 + counter * velocity) * radius + y_avg;
+		obj[0].position.x = Math.cos(atan1 + counter) * radius + x_avg;
+		obj[0].position.y = Math.sin(atan1 + counter) * radius + y_avg;
+		obj[1].position.x = Math.cos(atan2 + counter) * radius + x_avg;
+		obj[1].position.y = Math.sin(atan2 + counter) * radius + y_avg;
 		//motion_counter * velocity will equal pi when each obj in a pair has rotated exactly 180 degrees
 		// need to set position with atan + pi because otherwise will be inaccurate.
-		if( counter * velocity >= pi ) {
+		if( counter >= pi ) {
 			obj[0].position.x = Math.cos(atan1 + pi) * radius + x_avg;
 			obj[0].position.y = Math.sin(atan1 + pi) * radius + y_avg;
 			obj[1].position.x = Math.cos(atan2 + pi) * radius + x_avg;
 			obj[1].position.y = Math.sin(atan2 + pi) * radius + y_avg;
-			drawLine(obj[0], obj[1]);
+			//drawLine(obj[0], obj[1]);
 			return true;
 		}
 		return false;
 	}
 
 	function stopAnim() {
-		console.log("swapping obj length: " + swapping_obj.length);
-		console.log("swap_stack length: " + swap_stack.length);
-		console.log("curcularswapdone: " + circular_swap_done);
+		console.log(scene);
 		cancelAnimationFrame( start_anim );
 	}
 
@@ -445,7 +553,7 @@
 	shuffle in timed intervals
 	curve, setdrawrange, line thickness, particles, sprites, put curves in own group,
 	add comments, more comments, everything comments
-	insertion sort
+	insertion sort, calculate velocity for slideGroup so slide is done at same time circular swap is done.
 	*/
 	</script>
 </body>
